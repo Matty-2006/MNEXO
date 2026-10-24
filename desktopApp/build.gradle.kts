@@ -20,8 +20,8 @@ compose.desktop {
         mainClass = "ec.mnexo.MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "ec.mnexo"
+            targetFormats(TargetFormat.Msi)
+            packageName = "MNEXO"
             packageVersion = "1.0.0"
         }
     }

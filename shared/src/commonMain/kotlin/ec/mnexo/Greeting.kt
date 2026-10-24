@@ -1,9 +1,7 @@
 package ec.mnexo
 
-class Greeting {
-    private val platform = getPlatform()
-
+class Greeting(private val assistantName: String = "MNEXO") {
     fun greet(): String {
-        return sayHello(platform.name)
+        return sayHello(assistantName)
     }
 }

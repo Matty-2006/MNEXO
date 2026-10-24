@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 class SharedLogicDesktopTest {
 
     @Test
-    fun example() {
-        assertEquals(3, 1 + 2)
+    fun enEscritorioMuestraElSistemaOperativo() {
+        assertEquals(System.getProperty("os.name"), getPlatform().name)
     }
 }

@@ -1,0 +1,6 @@
+# Los scripts de Unix deben conservar saltos de línea LF y los de Windows CRLF,
+# aunque Git esté configurado para convertir finales de línea.
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary
+*.png binary
