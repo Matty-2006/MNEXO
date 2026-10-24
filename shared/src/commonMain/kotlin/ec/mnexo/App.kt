@@ -1,72 +1,96 @@
 package ec.mnexo
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import ec.mnexo.data.settings.SettingsRepository
+import ec.mnexo.data.settings.UserSettings
+import ec.mnexo.platform.SystemBackHandler
+import ec.mnexo.presentation.AppUiState
+import ec.mnexo.presentation.AppViewModel
+import ec.mnexo.ui.home.HomeScreen
+import ec.mnexo.ui.onboarding.OnboardingScreen
+import ec.mnexo.ui.settings.SettingsScreen
+import ec.mnexo.ui.theme.MnexoTheme
 
-// Colores provisionales con alto contraste (texto casi negro sobre fondo crema).
-// El tema accesible completo llega en el paso 1.1.
-private val Fondo = Color(0xFFFFF8EE)
-private val TextoPrincipal = Color(0xFF1B1B1F)
-private val TextoSecundario = Color(0xFF44474E)
-
-/**
- * Pantalla compartida por Android y Windows.
- * Es el mismo código para las dos plataformas: solo cambia el nombre del sistema que se muestra abajo.
- */
+/** Raíz de la app, compartida por Android y Windows. Cada plataforma le entrega dónde guardar los datos. */
 @Composable
-@Preview
-fun App() {
-    MaterialTheme {
-        val saludo = remember { Greeting().greet() }
-        val sistema = remember { getPlatform().name }
+fun App(settingsRepository: SettingsRepository) {
+    val viewModel = viewModel { AppViewModel(settingsRepository) }
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Fondo)
-                .safeContentPadding()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
-        ) {
-            Text(
-                text = saludo,
-                fontSize = 40.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextoPrincipal,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.semantics { heading() },
+    when (val current = state) {
+        AppUiState.Loading -> {
+            // Fondo vacío mientras se leen las preferencias, para no mostrar un parpadeo.
+            val defaults = UserSettings()
+            MnexoTheme(textSize = defaults.textSize, highContrast = defaults.highContrast) {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
+            }
+        }
+
+        is AppUiState.Onboarding -> OnboardingScreen(
+            initial = current.settings,
+            onFinish = viewModel::completeOnboarding,
+        )
+
+        is AppUiState.Ready -> MainScreens(
+            settings = current.settings,
+            onSave = viewModel::updateSettings,
+            onDeleteAllData = viewModel::deleteAllData,
+        )
+    }
+
+    errorMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissError,
+            text = { Text(message, style = MaterialTheme.typography.bodyLarge) },
+            confirmButton = {
+                TextButton(onClick = viewModel::dismissError) {
+                    Text("Entendido", style = MaterialTheme.typography.labelLarge)
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun MainScreens(
+    settings: UserSettings,
+    onSave: (UserSettings) -> Unit,
+    onDeleteAllData: () -> Unit,
+) {
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+
+    MnexoTheme(textSize = settings.textSize, highContrast = settings.highContrast) {
+        if (showSettings) {
+            SystemBackHandler { showSettings = false }
+            SettingsScreen(
+                settings = settings,
+                onSave = {
+                    onSave(it)
+                    showSettings = false
+                },
+                onBack = { showSettings = false },
+                onDeleteAllData = {
+                    onDeleteAllData()
+                    showSettings = false
+                },
             )
-            Text(
-                text = "¿Qué necesitas hacer?",
-                fontSize = 28.sp,
-                color = TextoPrincipal,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = "Funcionando en $sistema",
-                fontSize = 20.sp,
-                color = TextoSecundario,
-                textAlign = TextAlign.Center,
-            )
+        } else {
+            HomeScreen(settings = settings, onOpenSettings = { showSettings = true })
         }
     }
 }

@@ -6,11 +6,6 @@ import kotlin.test.assertEquals
 class SharedCommonTest {
 
     @Test
-    fun saludaConElNombreDelAsistente() {
-        assertEquals("¡Hola, MNEXO!", Greeting().greet())
-    }
-
-    @Test
     fun saludaConUnNombrePersonalizado() {
         assertEquals("¡Hola, Rosa!", sayHello("  Rosa "))
     }
