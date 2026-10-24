@@ -1,7 +1,7 @@
 package ec.mnexo.ui.settings
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.AlertDialog
@@ -24,15 +24,19 @@ import ec.mnexo.ui.components.BodyText
 import ec.mnexo.ui.components.NameField
 import ec.mnexo.ui.components.ScreenColumn
 import ec.mnexo.ui.components.ScreenTitle
+import ec.mnexo.ui.components.VoiceControls
+import ec.mnexo.ui.components.VoiceStatus
 import ec.mnexo.ui.theme.MnexoTheme
+import ec.mnexo.voice.SpeechRate
 
 /**
- * Ajustes: los cambios se previsualizan al instante pero solo se guardan con "Guardar cambios".
- * "Volver" descarta lo que no se guardó.
+ * Ajustes: los cambios se previsualizan al instante (y la velocidad se escucha), pero solo
+ * se guardan con "Guardar cambios". "Volver sin guardar" descarta lo que no se guardó.
  */
 @Composable
 fun SettingsScreen(
     settings: UserSettings,
+    voice: VoiceControls,
     onSave: (UserSettings) -> Unit,
     onBack: () -> Unit,
     onDeleteAllData: () -> Unit,
@@ -41,8 +45,11 @@ fun SettingsScreen(
     var assistantName by rememberSaveable { mutableStateOf(settings.assistantName) }
     var textSizeName by rememberSaveable { mutableStateOf(settings.textSize.name) }
     var highContrast by rememberSaveable { mutableStateOf(settings.highContrast) }
+    var speechRateName by rememberSaveable { mutableStateOf(settings.speechRate.name) }
+    var speakOnOpen by rememberSaveable { mutableStateOf(settings.speakOnOpen) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val textSize = TextSize.fromStored(textSizeName)
+    val speechRate = SpeechRate.fromStored(speechRateName)
 
     MnexoTheme(textSize = textSize, highContrast = highContrast) {
         ScreenColumn {
@@ -54,15 +61,32 @@ fun SettingsScreen(
                 label = "Nombre del asistente",
                 onDone = {},
             )
-            Text(
-                text = "Tamaño de letra",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
+
+            SectionTitle("Tamaño de letra")
             TextSize.entries.forEach { size ->
                 BigRadioOption(text = size.label, selected = size == textSize, onSelect = { textSizeName = size.name })
             }
             BigSwitchRow(text = "Alto contraste", checked = highContrast, onCheckedChange = { highContrast = it })
+
+            SectionTitle("Voz")
+            BodyText("Toca una velocidad para escucharla.")
+            SpeechRate.entries.forEach { rate ->
+                BigRadioOption(
+                    text = rate.label,
+                    selected = rate == speechRate,
+                    onSelect = {
+                        speechRateName = rate.name
+                        voice.onPreviewRate(rate)
+                    },
+                )
+            }
+            BigSwitchRow(
+                text = "Saludarme en voz alta al abrir",
+                checked = speakOnOpen,
+                onCheckedChange = { speakOnOpen = it },
+            )
+            VoiceStatus(state = voice.state, onOpenVoiceSetup = voice.onOpenVoiceSetup)
+
             BigButton("Guardar cambios", onClick = {
                 onSave(
                     settings.copy(
@@ -70,17 +94,15 @@ fun SettingsScreen(
                         assistantName = assistantName,
                         textSize = textSize,
                         highContrast = highContrast,
+                        speechRate = speechRate,
+                        speakOnOpen = speakOnOpen,
                     ),
                 )
             })
             BigSecondaryButton("Volver sin guardar", onClick = onBack)
 
             Spacer(Modifier.height(24.dp))
-            Text(
-                text = "Privacidad",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
+            SectionTitle("Privacidad")
             BodyText("Tus datos se guardan solo en este equipo. Puedes borrarlos cuando quieras.")
             BigSecondaryButton("Borrar mis datos", onClick = { confirmDelete = true })
         }
@@ -109,4 +131,13 @@ fun SettingsScreen(
             )
         }
     }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleLarge,
+        color = MaterialTheme.colorScheme.onBackground,
+    )
 }

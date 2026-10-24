@@ -6,13 +6,20 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 
 class MainActivity : ComponentActivity() {
+    private val mnexo get() = application as MnexoApplication
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        val settingsRepository = (application as MnexoApplication).settingsRepository
         setContent {
-            App(settingsRepository)
+            App(settingsRepository = mnexo.settingsRepository, speaker = mnexo.speaker)
         }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Si la persona sale de la app, el asistente deja de hablar.
+        mnexo.speaker.stop()
     }
 }

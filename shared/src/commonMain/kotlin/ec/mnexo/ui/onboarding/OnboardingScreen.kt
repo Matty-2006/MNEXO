@@ -21,26 +21,32 @@ import ec.mnexo.ui.components.BodyText
 import ec.mnexo.ui.components.NameField
 import ec.mnexo.ui.components.ScreenColumn
 import ec.mnexo.ui.components.ScreenTitle
+import ec.mnexo.ui.components.VoiceControls
+import ec.mnexo.ui.components.VoiceStatus
 import ec.mnexo.ui.theme.MnexoTheme
+import ec.mnexo.voice.SpeechRate
 
 private const val STEP_WELCOME = 0
 private const val STEP_USER_NAME = 1
 private const val STEP_ASSISTANT_NAME = 2
 private const val STEP_APPEARANCE = 3
-private const val STEP_SUMMARY = 4
+private const val STEP_VOICE = 4
+private const val STEP_SUMMARY = 5
 
 /**
  * Configuración inicial: una sola decisión por pantalla.
- * Los cambios de letra y contraste se ven al instante, antes de guardarlos.
+ * Los cambios de letra y contraste se ven al instante, y la velocidad de voz se escucha, antes de guardarlos.
  */
 @Composable
-fun OnboardingScreen(initial: UserSettings, onFinish: (UserSettings) -> Unit) {
+fun OnboardingScreen(initial: UserSettings, voice: VoiceControls, onFinish: (UserSettings) -> Unit) {
     var step by rememberSaveable { mutableIntStateOf(STEP_WELCOME) }
     var userName by rememberSaveable { mutableStateOf(initial.userName) }
     var assistantName by rememberSaveable { mutableStateOf(initial.assistantName) }
     var textSizeName by rememberSaveable { mutableStateOf(initial.textSize.name) }
     var highContrast by rememberSaveable { mutableStateOf(initial.highContrast) }
+    var speechRateName by rememberSaveable { mutableStateOf(initial.speechRate.name) }
     val textSize = TextSize.fromStored(textSizeName)
+    val speechRate = SpeechRate.fromStored(speechRateName)
 
     SystemBackHandler(enabled = step > STEP_WELCOME) { step-- }
 
@@ -106,8 +112,32 @@ fun OnboardingScreen(initial: UserSettings, onFinish: (UserSettings) -> Unit) {
                         checked = highContrast,
                         onCheckedChange = { highContrast = it },
                     )
-                    BigButton("Continuar", onClick = { step = STEP_SUMMARY })
+                    BigButton("Continuar", onClick = { step = STEP_VOICE })
                     BigSecondaryButton("Atrás", onClick = { step = STEP_ASSISTANT_NAME })
+                }
+
+                STEP_VOICE -> {
+                    ScreenTitle("¿A qué velocidad quieres que hable?")
+                    BodyText("Toca una opción para escucharme.")
+                    SpeechRate.entries.forEach { rate ->
+                        BigRadioOption(
+                            text = rate.label,
+                            selected = rate == speechRate,
+                            onSelect = {
+                                speechRateName = rate.name
+                                voice.onPreviewRate(rate)
+                            },
+                        )
+                    }
+                    VoiceStatus(state = voice.state, onOpenVoiceSetup = voice.onOpenVoiceSetup)
+                    BigButton("Continuar", onClick = {
+                        voice.onStop()
+                        step = STEP_SUMMARY
+                    })
+                    BigSecondaryButton("Atrás", onClick = {
+                        voice.onStop()
+                        step = STEP_APPEARANCE
+                    })
                 }
 
                 else -> {
@@ -119,6 +149,7 @@ fun OnboardingScreen(initial: UserSettings, onFinish: (UserSettings) -> Unit) {
                         BodyText("No me dijiste tu nombre. Puedes agregarlo cuando quieras en Ajustes.")
                     }
                     BodyText("Letra: ${textSize.label}. Alto contraste: ${if (highContrast) "sí" else "no"}.")
+                    BodyText("Voz: ${speechRate.label}.")
                     BigButton("Empezar a usar $cleanAssistantName", onClick = {
                         onFinish(
                             UserSettings(
@@ -126,6 +157,7 @@ fun OnboardingScreen(initial: UserSettings, onFinish: (UserSettings) -> Unit) {
                                 assistantName = cleanAssistantName,
                                 textSize = textSize,
                                 highContrast = highContrast,
+                                speechRate = speechRate,
                             ),
                         )
                     })

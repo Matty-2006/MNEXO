@@ -1,5 +1,6 @@
 package ec.mnexo.data.settings
 
+import ec.mnexo.voice.SpeechRate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -42,11 +43,16 @@ class DataStoreSettingsRepositoryTest {
                 assistantName = "",
                 textSize = TextSize.ENORME,
                 highContrast = true,
+                speechRate = SpeechRate.MUY_LENTA,
+                speakOnOpen = false,
                 onboardingCompleted = true,
             ),
         )
 
         val saved = repository.settings.first()
+
+        assertEquals(SpeechRate.MUY_LENTA, saved.speechRate)
+        assertEquals(false, saved.speakOnOpen)
 
         assertEquals("Rosa", saved.userName)
         assertEquals(DEFAULT_ASSISTANT_NAME, saved.assistantName)

@@ -8,6 +8,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -20,17 +21,35 @@ import ec.mnexo.data.settings.UserSettings
 import ec.mnexo.platform.SystemBackHandler
 import ec.mnexo.presentation.AppUiState
 import ec.mnexo.presentation.AppViewModel
+import ec.mnexo.ui.components.VoiceControls
 import ec.mnexo.ui.home.HomeScreen
 import ec.mnexo.ui.onboarding.OnboardingScreen
 import ec.mnexo.ui.settings.SettingsScreen
 import ec.mnexo.ui.theme.MnexoTheme
+import ec.mnexo.voice.Speaker
 
-/** Raíz de la app, compartida por Android y Windows. Cada plataforma le entrega dónde guardar los datos. */
+/**
+ * Raíz de la app, compartida por Android y Windows.
+ * Cada plataforma le entrega dónde guardar los datos y su motor de voz.
+ */
 @Composable
-fun App(settingsRepository: SettingsRepository) {
-    val viewModel = viewModel { AppViewModel(settingsRepository) }
+fun App(settingsRepository: SettingsRepository, speaker: Speaker) {
+    val viewModel = viewModel { AppViewModel(settingsRepository, speaker) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
+    val speakerState by viewModel.speakerState.collectAsStateWithLifecycle()
+    val lastSpoken by viewModel.lastSpoken.collectAsStateWithLifecycle()
+
+    val voice = VoiceControls(
+        state = speakerState,
+        canRepeat = lastSpoken != null,
+        onSpeakGreeting = viewModel::speakGreeting,
+        onStop = viewModel::stopSpeaking,
+        onRepeat = viewModel::repeatLast,
+        onRepeatSlower = viewModel::repeatSlower,
+        onPreviewRate = viewModel::previewRate,
+        onOpenVoiceSetup = { viewModel.openVoiceSetup() },
+    )
 
     when (val current = state) {
         AppUiState.Loading -> {
@@ -43,14 +62,19 @@ fun App(settingsRepository: SettingsRepository) {
 
         is AppUiState.Onboarding -> OnboardingScreen(
             initial = current.settings,
+            voice = voice,
             onFinish = viewModel::completeOnboarding,
         )
 
-        is AppUiState.Ready -> MainScreens(
-            settings = current.settings,
-            onSave = viewModel::updateSettings,
-            onDeleteAllData = viewModel::deleteAllData,
-        )
+        is AppUiState.Ready -> {
+            LaunchedEffect(Unit) { viewModel.greetIfNeeded() }
+            MainScreens(
+                settings = current.settings,
+                voice = voice,
+                onSave = viewModel::updateSettings,
+                onDeleteAllData = viewModel::deleteAllData,
+            )
+        }
     }
 
     errorMessage?.let { message ->
@@ -69,6 +93,7 @@ fun App(settingsRepository: SettingsRepository) {
 @Composable
 private fun MainScreens(
     settings: UserSettings,
+    voice: VoiceControls,
     onSave: (UserSettings) -> Unit,
     onDeleteAllData: () -> Unit,
 ) {
@@ -79,6 +104,7 @@ private fun MainScreens(
             SystemBackHandler { showSettings = false }
             SettingsScreen(
                 settings = settings,
+                voice = voice,
                 onSave = {
                     onSave(it)
                     showSettings = false
@@ -90,7 +116,7 @@ private fun MainScreens(
                 },
             )
         } else {
-            HomeScreen(settings = settings, onOpenSettings = { showSettings = true })
+            HomeScreen(settings = settings, voice = voice, onOpenSettings = { showSettings = true })
         }
     }
 }

@@ -102,17 +102,25 @@ fun BigButton(text: String, onClick: () -> Unit, enabled: Boolean = true) {
 
 /** Botón secundario, con borde grueso para que se distinga bien. */
 @Composable
-fun BigSecondaryButton(text: String, onClick: () -> Unit) {
+fun BigSecondaryButton(text: String, onClick: () -> Unit, enabled: Boolean = true) {
     OutlinedButton(
         onClick = onClick,
+        enabled = enabled,
         shape = BigShape,
-        border = BorderStroke(2.dp, MaterialTheme.colorScheme.outline),
+        border = BorderStroke(
+            2.dp,
+            if (enabled) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outline.copy(alpha = 0.38f),
+        ),
         modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp),
     ) {
         Text(
             text,
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onBackground,
+            color = if (enabled) {
+                MaterialTheme.colorScheme.onBackground
+            } else {
+                MaterialTheme.colorScheme.onBackground.copy(alpha = 0.38f)
+            },
             textAlign = TextAlign.Center,
         )
     }
