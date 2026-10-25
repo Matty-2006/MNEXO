@@ -141,8 +141,14 @@ val downloadAsrTokensForTests by tasks.registering(DownloadVerified::class) {
     destination = asrTestDir.file("tokens.txt")
 }
 
+val downloadSpeakerModelForTests by tasks.registering(DownloadVerified::class) {
+    url = "$sherpaReleases/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx"
+    sha256 = "aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2"
+    destination = asrTestDir.file("speaker.onnx")
+}
+
 tasks.register("prepareAsrForTests") {
     group = "mnexo"
-    description = "Descarga el modelo de reconocimiento de voz solo para las pruebas en la PC."
-    dependsOn(downloadAsrModelForTests, downloadAsrTokensForTests)
+    description = "Descarga los modelos del oído (voz a texto y quién habla) solo para las pruebas en la PC."
+    dependsOn(downloadAsrModelForTests, downloadAsrTokensForTests, downloadSpeakerModelForTests)
 }

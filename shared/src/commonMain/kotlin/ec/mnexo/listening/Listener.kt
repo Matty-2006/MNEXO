@@ -1,5 +1,6 @@
 package ec.mnexo.listening
 
+import ec.mnexo.voiceprint.VoiceCheck
 import kotlinx.coroutines.flow.StateFlow
 
 enum class ListenProblem {
@@ -39,8 +40,20 @@ sealed interface ListenerState {
 
 sealed interface ListenResult {
     data class Heard(val text: String) : ListenResult
+
+    /** Se entendió [text], pero la voz no parece la del dueño ([score] menor que el umbral). */
+    data class UnknownSpeaker(val text: String, val score: Float) : ListenResult
+
     data object NothingHeard : ListenResult
     data class Failed(val problem: ListenProblem) : ListenResult
+}
+
+/** Resultado de grabar una frase para registrar la voz. */
+sealed interface VoiceSampleResult {
+    class Sample(val embedding: FloatArray, val seconds: Float) : VoiceSampleResult
+    data object TooShort : VoiceSampleResult
+    data object NothingHeard : VoiceSampleResult
+    data class Failed(val problem: ListenProblem) : VoiceSampleResult
 }
 
 /**
@@ -60,7 +73,11 @@ interface Listener {
 
     /**
      * Escucha una frase y devuelve lo que entendió. Termina sola cuando la persona deja de hablar.
+     * Si se da [voiceCheck], además comprueba que la voz sea la del dueño.
      * Cancelar la corrutina cierra el micrófono de inmediato.
      */
-    suspend fun listen(): ListenResult
+    suspend fun listen(voiceCheck: VoiceCheck? = null): ListenResult
+
+    /** Graba una frase y devuelve su huella de voz, para registrar al dueño. */
+    suspend fun recordVoiceSample(): VoiceSampleResult
 }

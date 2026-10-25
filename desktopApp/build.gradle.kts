@@ -21,6 +21,9 @@ dependencies {
     implementation(files(voiceCache.file("downloads/sherpa-onnx-jvm-1.13.8.jar")))
     runtimeOnly(files(voiceCache.file("downloads/sherpa-onnx-native-lib-win-x64-1.13.8.jar")))
 
+    // Cifrado DPAPI de Windows para la huella de voz (JNA, Apache-2.0)
+    implementation(libs.jna.platform)
+
     testImplementation(libs.kotlin.test)
 }
 

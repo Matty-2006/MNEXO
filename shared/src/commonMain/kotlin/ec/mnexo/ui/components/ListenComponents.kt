@@ -35,6 +35,13 @@ class ListenControls(
     val onDownload: () -> Unit,
     val onCancelDownload: () -> Unit,
     val onOpenMicrophoneSettings: () -> Unit,
+    /** Hay que ofrecer registrar la voz (oído listo, sin huella y "solo mi voz" activado). */
+    val suggestVoiceRegistration: Boolean,
+    val onRegisterVoice: () -> Unit,
+    /** Lo que dijo una voz no reconocida, esperando "Sí, soy yo". */
+    val pendingUnknown: String?,
+    val onConfirmOwner: () -> Unit,
+    val onIgnoreUnknown: () -> Unit,
 )
 
 /** Panel principal de la pantalla de inicio: el gran botón "Hablar" y su estado. */
@@ -85,6 +92,17 @@ fun ListenPanel(controls: ListenControls) {
                     ListenProblem.NO_MICROPHONE, ListenProblem.ENGINE_ERROR -> TalkButton(controls.onTalk)
                 }
             }
+        }
+
+        controls.pendingUnknown?.let {
+            InfoCard("No reconocí tu voz. ¿Eres tú quien habló?")
+            BigButton("Sí, soy yo", onClick = controls.onConfirmOwner)
+            BigSecondaryButton("No, ignorar", onClick = controls.onIgnoreUnknown)
+        }
+
+        if (controls.suggestVoiceRegistration) {
+            InfoCard("Para obedecer solo a ti, necesito aprender cómo suena tu voz. Es un minuto: leerás 5 frases cortas.")
+            BigSecondaryButton("Registrar mi voz", onClick = controls.onRegisterVoice)
         }
 
         controls.heard?.let { text ->

@@ -2,6 +2,7 @@ package ec.mnexo.data.settings
 
 import ec.mnexo.voice.SpeechRate
 import ec.mnexo.voice.VoiceSource
+import ec.mnexo.voiceprint.VoiceCheckLevel
 
 const val DEFAULT_ASSISTANT_NAME = "MNEXO"
 const val MAX_NAME_LENGTH = 30
@@ -28,6 +29,9 @@ data class UserSettings(
     val voiceSource: VoiceSource = VoiceSource.AUTOMATICA,
     /** Si el asistente saluda en voz alta al abrir la app. */
     val speakOnOpen: Boolean = true,
+    /** Si hay una huella registrada, solo obedece a la voz del dueño. */
+    val ownerVoiceOnly: Boolean = true,
+    val voiceCheckLevel: VoiceCheckLevel = VoiceCheckLevel.NORMAL,
     val onboardingCompleted: Boolean = false,
 )
 

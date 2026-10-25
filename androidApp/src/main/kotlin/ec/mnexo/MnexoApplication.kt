@@ -13,6 +13,8 @@ import ec.mnexo.voice.AndroidSpeaker
 import ec.mnexo.voice.FallbackSpeaker
 import ec.mnexo.voice.SherpaAndroidSpeaker
 import ec.mnexo.voice.Speaker
+import ec.mnexo.voiceprint.KeystoreVoiceProfileStore
+import ec.mnexo.voiceprint.VoiceProfileStore
 
 /**
  * Vive mientras la app está abierta. Aquí se crean una sola vez el almacén de preferencias
@@ -32,8 +34,11 @@ class MnexoApplication : Application() {
     /** Oído de MNEXO: el modelo se descarga una vez a la carpeta privada de la app. */
     val listener: Listener by lazy {
         OfflineListener(
-            store = HttpModelStore(filesDir.resolve("models/${SpeechModels.NEMO_ES_DIR_NAME}"), SpeechModels.NEMO_ES_CTC),
+            store = HttpModelStore(filesDir.resolve("models/${SpeechModels.EAR_DIR_NAME}"), SpeechModels.EAR_FILES),
             engine = SherpaAndroidListenEngine(this),
         )
     }
+
+    /** Huella de voz del dueño, cifrada con el Android Keystore. */
+    val voiceProfiles: VoiceProfileStore by lazy { KeystoreVoiceProfileStore(this) }
 }

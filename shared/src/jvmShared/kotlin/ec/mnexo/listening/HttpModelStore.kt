@@ -14,15 +14,23 @@ import java.security.MessageDigest
 /** Un archivo del modelo, con su huella SHA-256 para comprobar que llegó completo y sin alterar. */
 data class ModelFile(val name: String, val url: String, val sha256: String, val size: Long)
 
+/** Archivos del "oído" de MNEXO: reconocimiento de voz en español + reconocimiento de quién habla. */
 object SpeechModels {
     // NVIDIA FastConformer CTC español (CC-BY-4.0), convertido por el proyecto sherpa-onnx.
     // Se fija una versión exacta del repositorio para que el archivo nunca cambie sin que lo sepamos.
     private const val NEMO_ES_REPO =
         "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-fast-conformer-ctc-es-1424-int8/resolve/05a9908f7571fd39c774445806dfb8189bcdb43d"
 
-    const val NEMO_ES_DIR_NAME = "asr-es-nemo-ctc"
+    // 3D-Speaker CAM++ (Apache-2.0), entrenado con ~200 000 personas; publicado por sherpa-onnx.
+    private const val SPEAKER_MODELS =
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models"
 
-    val NEMO_ES_CTC = listOf(
+    /** Carpeta del oído (se mantiene el nombre para no volver a descargar lo que ya se bajó). */
+    const val EAR_DIR_NAME = "asr-es-nemo-ctc"
+
+    const val SPEAKER_MODEL_FILE = "speaker.onnx"
+
+    val EAR_FILES = listOf(
         ModelFile(
             name = "model.int8.onnx",
             url = "$NEMO_ES_REPO/model.int8.onnx",
@@ -35,8 +43,13 @@ object SpeechModels {
             sha256 = "6191b4853e3654f053c42f6fd184ca53b402987aefdd6ff6baa68034d803ee85",
             size = 10_871,
         ),
+        ModelFile(
+            name = SPEAKER_MODEL_FILE,
+            url = "$SPEAKER_MODELS/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx",
+            sha256 = "aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2",
+            size = 28_281_164,
+        ),
     )
-
 }
 
 /**
@@ -52,7 +65,8 @@ class HttpModelStore(
 
     override val modelDir: String get() = directory.absolutePath
 
-    override val totalBytes: Long get() = files.sumOf { it.size }
+    override val remainingBytes: Long
+        get() = files.filter { File(directory, it.name).length() != it.size }.sumOf { it.size }
 
     override val isInstalled: Boolean
         get() = marker.isFile && files.all { File(directory, it.name).length() == it.size }

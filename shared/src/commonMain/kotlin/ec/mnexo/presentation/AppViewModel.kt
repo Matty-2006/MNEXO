@@ -8,6 +8,10 @@ import ec.mnexo.listening.ListenProblem
 import ec.mnexo.listening.ListenResult
 import ec.mnexo.listening.Listener
 import ec.mnexo.listening.ListenerState
+import ec.mnexo.listening.VoiceSampleResult
+import ec.mnexo.voiceprint.VoiceCheck
+import ec.mnexo.voiceprint.VoicePrints
+import ec.mnexo.voiceprint.VoiceProfileStore
 import kotlinx.coroutines.Job
 import ec.mnexo.voice.Phrases
 import ec.mnexo.voice.SpeakerState
@@ -37,10 +41,23 @@ sealed interface AppUiState {
  * Lógica de la app separada de las pantallas (patrón MVVM).
  * Sobrevive cuando Android recrea la pantalla, por ejemplo al girar el celular.
  */
+/** Estado del registro de voz (5 frases). */
+data class EnrollmentUi(
+    /** Frase que toca grabar (0 a 4). */
+    val phraseIndex: Int = 0,
+    val recording: Boolean = false,
+    /** Mensaje de la última frase: "¡Bien!", "Fue muy corta"... */
+    val message: String? = null,
+    val finished: Boolean = false,
+    /** Qué tan consistentes salieron las frases (0 a 1); baja = conviene repetir. */
+    val consistency: Float? = null,
+)
+
 class AppViewModel(
     private val repository: SettingsRepository,
     private val speaker: Speaker,
     private val listener: Listener,
+    private val voiceProfiles: VoiceProfileStore,
 ) : ViewModel() {
 
     val uiState: StateFlow<AppUiState> = repository.settings
@@ -71,8 +88,10 @@ class AppViewModel(
         speaker.stop()
         _lastSpoken.value = null
         _heard.value = null
+        _pendingUnknown.value = null
         viewModelScope.launch {
             try {
+                deleteVoiceProfileNow()
                 repository.clear()
                 _errorMessage.value = null
             } catch (e: IOException) {
@@ -149,16 +168,137 @@ class AppViewModel(
         val settings = currentSettings() ?: return
         // Se calla antes de escuchar, para no oírse a sí mismo.
         speaker.stop()
+        _pendingUnknown.value = null
+        val voiceCheck = voiceProfile?.takeIf { settings.ownerVoiceOnly }
+            ?.let { VoiceCheck(it, settings.voiceCheckLevel.threshold) }
         listenJob = viewModelScope.launch {
-            when (val result = listener.listen()) {
-                is ListenResult.Heard -> {
-                    _heard.value = result.text
-                    say(Phrases.heard(result.text), settings.speechRate)
+            when (val result = listener.listen(voiceCheck)) {
+                is ListenResult.Heard -> acceptHeard(result.text, settings)
+                is ListenResult.UnknownSpeaker -> {
+                    // No se repite en voz alta lo que dijo otra persona (privacidad); se pregunta si es el dueño.
+                    _pendingUnknown.value = result.text
+                    say(Phrases.UNKNOWN_SPEAKER, settings.speechRate)
                 }
                 ListenResult.NothingHeard -> say(Phrases.NOTHING_HEARD, settings.speechRate)
                 is ListenResult.Failed -> say(Phrases.listenProblemMessage(result.problem), settings.speechRate)
             }
         }
+    }
+
+    private fun acceptHeard(text: String, settings: UserSettings) {
+        _heard.value = text
+        say(Phrases.heard(text), settings.speechRate)
+    }
+
+    // ---- Una sola voz ----
+
+    /** Huella del dueño en memoria (descifrada solo mientras la app está abierta). */
+    private var voiceProfile: FloatArray? = null
+
+    private val _hasVoiceProfile = MutableStateFlow(false)
+    val hasVoiceProfile: StateFlow<Boolean> = _hasVoiceProfile.asStateFlow()
+
+    private val _pendingUnknown = MutableStateFlow<String?>(null)
+
+    /** Lo que dijo una voz que no se reconoció como la del dueño, a la espera de "Sí, soy yo". */
+    val pendingUnknown: StateFlow<String?> = _pendingUnknown.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            voiceProfile = voiceProfiles.load()
+            _hasVoiceProfile.value = voiceProfile != null
+        }
+    }
+
+    /** La persona confirma que sí era ella: se acepta lo que dijo. */
+    fun confirmUnknownSpeakerIsOwner() {
+        val text = _pendingUnknown.value ?: return
+        val settings = currentSettings() ?: return
+        _pendingUnknown.value = null
+        acceptHeard(text, settings)
+    }
+
+    fun ignoreUnknownSpeaker() {
+        _pendingUnknown.value = null
+        speaker.stop()
+    }
+
+    private val _enrollment = MutableStateFlow<EnrollmentUi?>(null)
+
+    /** Registro de voz en curso; null si no se está registrando. */
+    val enrollment: StateFlow<EnrollmentUi?> = _enrollment.asStateFlow()
+
+    private val enrollmentSamples = mutableListOf<FloatArray>()
+
+    fun startEnrollment() {
+        stopListening()
+        enrollmentSamples.clear()
+        _enrollment.value = EnrollmentUi()
+    }
+
+    /** Lee en voz alta la frase que toca, para quien prefiere repetirla en lugar de leerla. */
+    fun speakEnrollmentPhrase() {
+        val state = _enrollment.value ?: return
+        val settings = currentSettings() ?: return
+        say(VoicePrints.ENROLLMENT_PHRASES[state.phraseIndex], settings.speechRate)
+    }
+
+    fun recordEnrollmentPhrase() {
+        val state = _enrollment.value ?: return
+        if (state.recording || state.finished || listenJob?.isActive == true) return
+        speaker.stop()
+        _enrollment.value = state.copy(recording = true, message = null)
+        listenJob = viewModelScope.launch {
+            val current = _enrollment.value ?: return@launch
+            _enrollment.value = when (val result = listener.recordVoiceSample()) {
+                is VoiceSampleResult.Sample -> {
+                    enrollmentSamples += result.embedding
+                    if (enrollmentSamples.size < VoicePrints.ENROLLMENT_PHRASES.size) {
+                        current.copy(phraseIndex = current.phraseIndex + 1, recording = false, message = "¡Bien! Sigamos.")
+                    } else {
+                        finishEnrollment(current)
+                    }
+                }
+                VoiceSampleResult.TooShort ->
+                    current.copy(recording = false, message = "Fue muy corta. Lee la frase completa, sin prisa.")
+                VoiceSampleResult.NothingHeard ->
+                    current.copy(recording = false, message = "No te escuché. Toca Grabar y lee la frase.")
+                is VoiceSampleResult.Failed ->
+                    current.copy(recording = false, message = Phrases.listenProblemMessage(result.problem))
+            }
+        }
+    }
+
+    private suspend fun finishEnrollment(current: EnrollmentUi): EnrollmentUi {
+        val profile = VoicePrints.average(enrollmentSamples)
+        val consistency = VoicePrints.consistency(enrollmentSamples)
+        return try {
+            voiceProfiles.save(profile)
+            voiceProfile = profile
+            _hasVoiceProfile.value = true
+            currentSettings()?.let { say("Listo. Ya reconozco tu voz.", it.speechRate) }
+            current.copy(recording = false, finished = true, consistency = consistency, message = null)
+        } catch (e: Exception) {
+            current.copy(recording = false, message = "No pude guardar tu voz. Inténtalo de nuevo.")
+        } finally {
+            enrollmentSamples.clear()
+        }
+    }
+
+    fun closeEnrollment() {
+        stopListening()
+        enrollmentSamples.clear()
+        _enrollment.value = null
+    }
+
+    fun deleteVoiceProfile() {
+        viewModelScope.launch { deleteVoiceProfileNow() }
+    }
+
+    private suspend fun deleteVoiceProfileNow() {
+        voiceProfiles.delete()
+        voiceProfile = null
+        _hasVoiceProfile.value = false
     }
 
     fun stopListening() {

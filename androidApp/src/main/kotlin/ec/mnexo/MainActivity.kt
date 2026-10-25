@@ -13,7 +13,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            App(settingsRepository = mnexo.settingsRepository, speaker = mnexo.speaker, listener = mnexo.listener)
+            App(
+                settingsRepository = mnexo.settingsRepository,
+                speaker = mnexo.speaker,
+                listener = mnexo.listener,
+                voiceProfiles = mnexo.voiceProfiles,
+            )
         }
     }
 

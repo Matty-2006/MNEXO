@@ -13,6 +13,7 @@ import ec.mnexo.listening.SpeechModels
 import ec.mnexo.voice.FallbackSpeaker
 import ec.mnexo.voice.SherpaDesktopSpeaker
 import ec.mnexo.voice.WindowsSpeaker
+import ec.mnexo.voiceprint.DpapiVoiceProfileStore
 import java.io.File
 
 fun main() {
@@ -26,9 +27,11 @@ fun main() {
     )
     // Oído de MNEXO: el modelo se descarga una vez a %APPDATA%\MNEXO\models.
     val listener = OfflineListener(
-        store = HttpModelStore(File(dataDir, "models/${SpeechModels.NEMO_ES_DIR_NAME}"), SpeechModels.NEMO_ES_CTC),
+        store = HttpModelStore(File(dataDir, "models/${SpeechModels.EAR_DIR_NAME}"), SpeechModels.EAR_FILES),
         engine = SherpaDesktopListenEngine(SherpaDesktopListenEngine.findVadFile()),
     )
+    // Huella de voz del dueño, cifrada con DPAPI (solo este usuario de Windows puede leerla).
+    val voiceProfiles = DpapiVoiceProfileStore(File(dataDir, "voiceprint.bin"))
 
     application {
         Window(
@@ -40,7 +43,7 @@ fun main() {
             // Ventana amplia desde el inicio para que el texto grande se lea sin redimensionar.
             state = rememberWindowState(width = 900.dp, height = 760.dp),
         ) {
-            App(settingsRepository = settingsRepository, speaker = speaker, listener = listener)
+            App(settingsRepository = settingsRepository, speaker = speaker, listener = listener, voiceProfiles = voiceProfiles)
         }
     }
 }

@@ -5,6 +5,9 @@ import com.k2fsa.sherpa.onnx.OfflineNemoEncDecCtcModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
 import com.k2fsa.sherpa.onnx.SileroVadModelConfig
+import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractor
+import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractorConfig
+import ec.mnexo.voiceprint.SpeakerEmbedder
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
 import java.io.File
@@ -42,11 +45,11 @@ class SherpaDesktopListenEngine(private val vadFile: File?) : ListenEngine {
         return object : VoiceActivityDetector {
             override fun accept(samples: FloatArray) = vad.acceptWaveform(samples)
             override fun isSpeaking() = vad.isSpeechDetected()
-            override fun popSegment(): FloatArray? {
+            override fun popSegment(): SpeechSegment? {
                 if (vad.empty()) return null
-                val segment = vad.front().samples
+                val segment = vad.front()
                 vad.pop()
-                return segment
+                return SpeechSegment(segment.start, segment.samples)
             }
             override fun flush() = vad.flush()
             override fun reset() = vad.reset()
@@ -78,6 +81,27 @@ class SherpaDesktopListenEngine(private val vadFile: File?) : ListenEngine {
                 stream.acceptWaveform(samples, sampleRate)
                 recognizer.decode(stream)
                 recognizer.getResult(stream).text
+            } finally {
+                stream.release()
+            }
+        }
+    }
+
+    override fun createSpeakerEmbedder(modelDir: String): SpeakerEmbedder {
+        val extractor = SpeakerEmbeddingExtractor(
+            SpeakerEmbeddingExtractorConfig.Builder()
+                .setModel(File(modelDir, SpeechModels.SPEAKER_MODEL_FILE).absolutePath)
+                .setNumThreads(2)
+                .setDebug(false)
+                .setProvider("cpu")
+                .build(),
+        )
+        return SpeakerEmbedder { samples, sampleRate ->
+            val stream = extractor.createStream()
+            try {
+                stream.acceptWaveform(samples, sampleRate)
+                stream.inputFinished()
+                extractor.compute(stream)
             } finally {
                 stream.release()
             }

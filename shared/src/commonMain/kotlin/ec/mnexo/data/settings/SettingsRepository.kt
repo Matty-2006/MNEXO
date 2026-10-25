@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import ec.mnexo.voice.SpeechRate
 import ec.mnexo.voice.VoiceSource
+import ec.mnexo.voiceprint.VoiceCheckLevel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -38,6 +39,8 @@ class DataStoreSettingsRepository(
                 speechRate = SpeechRate.fromStored(prefs[Keys.SPEECH_RATE]),
                 voiceSource = VoiceSource.fromStored(prefs[Keys.VOICE_SOURCE]),
                 speakOnOpen = prefs[Keys.SPEAK_ON_OPEN] ?: true,
+                ownerVoiceOnly = prefs[Keys.OWNER_VOICE_ONLY] ?: true,
+                voiceCheckLevel = VoiceCheckLevel.fromStored(prefs[Keys.VOICE_CHECK_LEVEL]),
                 onboardingCompleted = prefs[Keys.ONBOARDING_COMPLETED] ?: false,
             )
         }
@@ -51,6 +54,8 @@ class DataStoreSettingsRepository(
             prefs[Keys.SPEECH_RATE] = settings.speechRate.name
             prefs[Keys.VOICE_SOURCE] = settings.voiceSource.name
             prefs[Keys.SPEAK_ON_OPEN] = settings.speakOnOpen
+            prefs[Keys.OWNER_VOICE_ONLY] = settings.ownerVoiceOnly
+            prefs[Keys.VOICE_CHECK_LEVEL] = settings.voiceCheckLevel.name
             prefs[Keys.ONBOARDING_COMPLETED] = settings.onboardingCompleted
         }
     }
@@ -67,6 +72,8 @@ class DataStoreSettingsRepository(
         val SPEECH_RATE = stringPreferencesKey("speech_rate")
         val VOICE_SOURCE = stringPreferencesKey("voice_source")
         val SPEAK_ON_OPEN = booleanPreferencesKey("speak_on_open")
+        val OWNER_VOICE_ONLY = booleanPreferencesKey("owner_voice_only")
+        val VOICE_CHECK_LEVEL = stringPreferencesKey("voice_check_level")
         val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
     }
 }

@@ -22,29 +22,42 @@ private class FakeMicrophone(private val windows: List<Float>) : AudioInput {
     }
 }
 
-/** Detector simulado: hay voz mientras llegan ventanas con 1f; al primer silencio entrega el tramo. */
+/**
+ * Detector simulado: hay voz mientras llegan ventanas con valor > 0; al primer silencio entrega el tramo.
+ * Como un detector real, "se da cuenta" una ventana tarde: la primera ventana de voz no entra al tramo.
+ */
 private class FakeVad : VoiceActivityDetector {
     private val current = mutableListOf<Float>()
-    private var ready: FloatArray? = null
+    private var ready: SpeechSegment? = null
+    private var position = 0
+    private var currentStart = 0
+    private var missedFirst = false
     override fun accept(samples: FloatArray) {
         if (samples[0] > 0f) {
-            current += samples.toList()
+            if (!missedFirst) {
+                missedFirst = true // el detector reacciona tarde
+            } else {
+                if (current.isEmpty()) currentStart = position
+                current += samples.toList()
+            }
         } else if (current.isNotEmpty()) {
-            ready = current.toFloatArray()
-            current.clear()
+            flush()
         }
+        position += samples.size
     }
     override fun isSpeaking() = current.isNotEmpty()
-    override fun popSegment(): FloatArray? = ready.also { ready = null }
+    override fun popSegment(): SpeechSegment? = ready.also { ready = null }
     override fun flush() {
         if (current.isNotEmpty()) {
-            ready = current.toFloatArray()
+            ready = SpeechSegment(currentStart, current.toFloatArray())
             current.clear()
         }
     }
     override fun reset() {
         current.clear()
         ready = null
+        position = 0
+        missedFirst = false
     }
 }
 
@@ -65,8 +78,22 @@ class ListenSessionTest {
         val result = listenOnce(mic, FakeVad(), stt)
 
         assertEquals(ListenResult.Heard("quiero llamar a mi hija"), result)
-        assertEquals(10 * VAD_WINDOW, recognizedSamples, "Solo se reconoce el tramo con voz")
+        assertTrue(recognizedSamples >= 10 * VAD_WINDOW, "Se reconoce todo el tramo con voz")
         assertTrue(mic.started && mic.stopped, "El micrófono siempre se cierra")
+    }
+
+    @Test
+    fun noSePierdeElComienzoDeLaFraseAunqueElDetectorReaccioneTarde() = runTest {
+        // La primera ventana de voz (valor 2) es la palabra "no"; el detector simulado la pasa por alto.
+        val mic = FakeMicrophone(silence + listOf(2f) + speech + silence)
+        var captured = FloatArray(0)
+
+        listenOnce(mic, FakeVad(), SpeechToText { samples, _ ->
+            captured = samples
+            "no llames"
+        })
+
+        assertTrue(captured.any { it == 2f }, "El margen previo debe recuperar la primera palabra")
     }
 
     @Test

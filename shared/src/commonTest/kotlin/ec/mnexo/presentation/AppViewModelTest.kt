@@ -5,6 +5,10 @@ import ec.mnexo.data.settings.UserSettings
 import ec.mnexo.listening.ListenResult
 import ec.mnexo.listening.Listener
 import ec.mnexo.listening.ListenerState
+import ec.mnexo.listening.VoiceSampleResult
+import ec.mnexo.voiceprint.VoiceCheck
+import ec.mnexo.voiceprint.VoicePrints
+import ec.mnexo.voiceprint.VoiceProfileStore
 import ec.mnexo.voice.Phrases
 import ec.mnexo.voice.Speaker
 import ec.mnexo.voice.SpeakerState
@@ -49,13 +53,32 @@ private class FakeSpeaker : Speaker {
     override fun openVoiceSetup() = true
 }
 
-/** Doble de prueba: devuelve el resultado que la prueba le indique. */
-private class FakeListener(private val result: ListenResult = ListenResult.NothingHeard) : Listener {
+/** Doble de prueba: devuelve el resultado que la prueba le indique y anota si se pidió comprobar la voz. */
+private class FakeListener(
+    private val result: ListenResult = ListenResult.NothingHeard,
+    private val sample: VoiceSampleResult = VoiceSampleResult.Sample(floatArrayOf(1f, 0f), 2f),
+) : Listener {
+    var lastVoiceCheck: VoiceCheck? = null
     override val state = MutableStateFlow<ListenerState>(ListenerState.Ready)
     override val modelSizeMb = 131L
     override fun downloadModel() {}
     override fun cancelDownload() {}
-    override suspend fun listen() = result
+    override suspend fun listen(voiceCheck: VoiceCheck?): ListenResult {
+        lastVoiceCheck = voiceCheck
+        return result
+    }
+    override suspend fun recordVoiceSample() = sample
+}
+
+/** Doble de prueba: guarda la huella en memoria. */
+private class FakeProfileStore(var profile: FloatArray? = null) : VoiceProfileStore {
+    override suspend fun load() = profile
+    override suspend fun save(profile: FloatArray) {
+        this.profile = profile
+    }
+    override suspend fun delete() {
+        profile = null
+    }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -76,7 +99,7 @@ class AppViewModelTest {
     @Test
     fun saludaUnaSolaVezAunqueSeLlameVariasVeces() = runTest {
         val speaker = FakeSpeaker()
-        val viewModel = AppViewModel(FakeSettingsRepository(ready), speaker, FakeListener())
+        val viewModel = AppViewModel(FakeSettingsRepository(ready), speaker, FakeListener(), FakeProfileStore())
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
         viewModel.greetIfNeeded()
@@ -88,7 +111,7 @@ class AppViewModelTest {
     @Test
     fun noSaludaSiLaPersonaLoDesactivo() = runTest {
         val speaker = FakeSpeaker()
-        val viewModel = AppViewModel(FakeSettingsRepository(ready.copy(speakOnOpen = false)), speaker, FakeListener())
+        val viewModel = AppViewModel(FakeSettingsRepository(ready.copy(speakOnOpen = false)), speaker, FakeListener(), FakeProfileStore())
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
         viewModel.greetIfNeeded()
@@ -100,7 +123,7 @@ class AppViewModelTest {
     fun masDespacioRepiteLaUltimaFraseYGuardaLaNuevaVelocidad() = runTest {
         val repository = FakeSettingsRepository(ready)
         val speaker = FakeSpeaker()
-        val viewModel = AppViewModel(repository, speaker, FakeListener())
+        val viewModel = AppViewModel(repository, speaker, FakeListener(), FakeProfileStore())
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
         viewModel.speakGreeting()
@@ -113,7 +136,7 @@ class AppViewModelTest {
     @Test
     fun repetirUsaLaMismaFraseYVelocidad() = runTest {
         val speaker = FakeSpeaker()
-        val viewModel = AppViewModel(FakeSettingsRepository(ready), speaker, FakeListener())
+        val viewModel = AppViewModel(FakeSettingsRepository(ready), speaker, FakeListener(), FakeProfileStore())
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
         viewModel.speakGreeting()
@@ -127,7 +150,7 @@ class AppViewModelTest {
     fun probarUnaVelocidadNoLaGuarda() = runTest {
         val repository = FakeSettingsRepository(ready)
         val speaker = FakeSpeaker()
-        val viewModel = AppViewModel(repository, speaker, FakeListener())
+        val viewModel = AppViewModel(repository, speaker, FakeListener(), FakeProfileStore())
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
         viewModel.previewRate(SpeechRate.MUY_LENTA)
@@ -139,7 +162,7 @@ class AppViewModelTest {
     @Test
     fun alEscucharSeCallaYConfirmaEnVozAltaLoQueEntendio() = runTest {
         val speaker = FakeSpeaker()
-        val viewModel = AppViewModel(FakeSettingsRepository(ready), speaker, FakeListener(ListenResult.Heard("llama a María")))
+        val viewModel = AppViewModel(FakeSettingsRepository(ready), speaker, FakeListener(ListenResult.Heard("llama a María")), FakeProfileStore())
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
         viewModel.startListening()
@@ -152,7 +175,7 @@ class AppViewModelTest {
     @Test
     fun siNoEscuchaNadaLoDiceConCalma() = runTest {
         val speaker = FakeSpeaker()
-        val viewModel = AppViewModel(FakeSettingsRepository(ready), speaker, FakeListener(ListenResult.NothingHeard))
+        val viewModel = AppViewModel(FakeSettingsRepository(ready), speaker, FakeListener(ListenResult.NothingHeard), FakeProfileStore())
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
         viewModel.startListening()
@@ -162,9 +185,97 @@ class AppViewModelTest {
     }
 
     @Test
+    fun conHuellaRegistradaPideComprobarLaVozDelDueno() = runTest {
+        val listener = FakeListener(ListenResult.Heard("hola"))
+        val viewModel = AppViewModel(FakeSettingsRepository(ready), FakeSpeaker(), listener, FakeProfileStore(floatArrayOf(1f, 0f)))
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        viewModel.startListening()
+
+        assertEquals(0.55f, listener.lastVoiceCheck?.threshold)
+    }
+
+    @Test
+    fun siLaPersonaDesactivaSoloMiVozNoSeComprueba() = runTest {
+        val listener = FakeListener(ListenResult.Heard("hola"))
+        val viewModel = AppViewModel(
+            FakeSettingsRepository(ready.copy(ownerVoiceOnly = false)), FakeSpeaker(), listener, FakeProfileStore(floatArrayOf(1f, 0f)),
+        )
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        viewModel.startListening()
+
+        assertEquals(null, listener.lastVoiceCheck)
+    }
+
+    @Test
+    fun conOtraVozNoRepiteLoQueDijoYEsperaSiSoyYo() = runTest {
+        val speaker = FakeSpeaker()
+        val viewModel = AppViewModel(
+            FakeSettingsRepository(ready), speaker, FakeListener(ListenResult.UnknownSpeaker("compra algo", 0.2f)), FakeProfileStore(floatArrayOf(1f, 0f)),
+        )
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        viewModel.startListening()
+
+        assertEquals(Phrases.UNKNOWN_SPEAKER, speaker.spoken.last().first)
+        assertEquals(null, viewModel.heard.value, "No se acepta hasta que confirme")
+
+        viewModel.confirmUnknownSpeakerIsOwner()
+
+        assertEquals("compra algo", viewModel.heard.value)
+        assertEquals(null, viewModel.pendingUnknown.value)
+    }
+
+    @Test
+    fun registrarLaVozGuardaLaHuellaTrasCincoFrases() = runTest {
+        val store = FakeProfileStore()
+        val viewModel = AppViewModel(FakeSettingsRepository(ready), FakeSpeaker(), FakeListener(), store)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        viewModel.startEnrollment()
+        repeat(VoicePrints.ENROLLMENT_PHRASES.size - 1) { viewModel.recordEnrollmentPhrase() }
+
+        assertEquals(null, store.profile, "Con 4 frases todavía no se guarda")
+        assertEquals(4, viewModel.enrollment.value?.phraseIndex)
+
+        viewModel.recordEnrollmentPhrase()
+
+        assertTrue(viewModel.enrollment.value?.finished == true)
+        assertTrue(viewModel.hasVoiceProfile.value)
+        assertTrue(store.profile != null)
+    }
+
+    @Test
+    fun unaFraseCortaNoAvanzaElRegistro() = runTest {
+        val viewModel = AppViewModel(
+            FakeSettingsRepository(ready), FakeSpeaker(), FakeListener(sample = VoiceSampleResult.TooShort), FakeProfileStore(),
+        )
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        viewModel.startEnrollment()
+        viewModel.recordEnrollmentPhrase()
+
+        assertEquals(0, viewModel.enrollment.value?.phraseIndex)
+        assertTrue(viewModel.enrollment.value?.message?.contains("corta") == true)
+    }
+
+    @Test
+    fun borrarMisDatosTambienBorraLaHuellaDeVoz() = runTest {
+        val store = FakeProfileStore(floatArrayOf(1f, 0f))
+        val viewModel = AppViewModel(FakeSettingsRepository(ready), FakeSpeaker(), FakeListener(), store)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+
+        viewModel.deleteAllData()
+
+        assertEquals(null, store.profile)
+        assertEquals(false, viewModel.hasVoiceProfile.value)
+    }
+
+    @Test
     fun borrarMisDatosCallaAlAsistente() = runTest {
         val speaker = FakeSpeaker()
-        val viewModel = AppViewModel(FakeSettingsRepository(ready), speaker, FakeListener())
+        val viewModel = AppViewModel(FakeSettingsRepository(ready), speaker, FakeListener(), FakeProfileStore())
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
 
         viewModel.deleteAllData()

@@ -23,6 +23,8 @@ object Phrases {
 
     const val NOTHING_HEARD = "No te escuché. Toca Hablar e inténtalo otra vez."
 
+    const val UNKNOWN_SPEAKER = "No reconocí tu voz. Si eres tú, toca el botón Sí, soy yo."
+
     fun listenProblemMessage(problem: ListenProblem): String = when (problem) {
         ListenProblem.DOWNLOAD_FAILED ->
             "No pude descargar mi oído. Revisa tu conexión a internet e inténtalo otra vez."

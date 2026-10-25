@@ -29,6 +29,7 @@ import ec.mnexo.ui.components.VoiceStatus
 import ec.mnexo.ui.theme.MnexoTheme
 import ec.mnexo.voice.SpeechRate
 import ec.mnexo.voice.VoiceSource
+import ec.mnexo.voiceprint.VoiceCheckLevel
 
 /**
  * Ajustes: los cambios se previsualizan al instante (y la velocidad se escucha), pero solo
@@ -41,6 +42,9 @@ fun SettingsScreen(
     onSave: (UserSettings) -> Unit,
     onBack: () -> Unit,
     onDeleteAllData: () -> Unit,
+    hasVoiceProfile: Boolean,
+    onRegisterVoice: () -> Unit,
+    onDeleteVoiceProfile: () -> Unit,
 ) {
     var userName by rememberSaveable { mutableStateOf(settings.userName) }
     var assistantName by rememberSaveable { mutableStateOf(settings.assistantName) }
@@ -49,6 +53,10 @@ fun SettingsScreen(
     var speechRateName by rememberSaveable { mutableStateOf(settings.speechRate.name) }
     var speakOnOpen by rememberSaveable { mutableStateOf(settings.speakOnOpen) }
     var voiceSourceName by rememberSaveable { mutableStateOf(settings.voiceSource.name) }
+    var ownerVoiceOnly by rememberSaveable { mutableStateOf(settings.ownerVoiceOnly) }
+    var voiceCheckLevelName by rememberSaveable { mutableStateOf(settings.voiceCheckLevel.name) }
+    var confirmDeleteVoice by rememberSaveable { mutableStateOf(false) }
+    val voiceCheckLevel = VoiceCheckLevel.fromStored(voiceCheckLevelName)
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val textSize = TextSize.fromStored(textSizeName)
     val speechRate = SpeechRate.fromStored(speechRateName)
@@ -101,6 +109,41 @@ fun SettingsScreen(
             )
             VoiceStatus(state = voice.state, onOpenVoiceSetup = voice.onOpenVoiceSetup)
 
+            SectionTitle("Mi voz")
+            BodyText(
+                if (hasVoiceProfile) {
+                    "Ya registraste tu voz. Se guarda cifrada solo en este equipo."
+                } else {
+                    "Aún no registraste tu voz: por ahora obedezco a cualquier persona."
+                },
+            )
+            BigSecondaryButton(
+                text = if (hasVoiceProfile) "Volver a registrar mi voz" else "Registrar mi voz",
+                onClick = onRegisterVoice,
+            )
+            BigSwitchRow(
+                text = "Obedecer solo a mi voz",
+                checked = ownerVoiceOnly,
+                onCheckedChange = { ownerVoiceOnly = it },
+            )
+            if (ownerVoiceOnly) {
+                BodyText("¿Qué tan exigente soy al reconocerte?")
+                VoiceCheckLevel.entries.forEach { level ->
+                    BigRadioOption(
+                        text = level.label,
+                        selected = level == voiceCheckLevel,
+                        onSelect = { voiceCheckLevelName = level.name },
+                    )
+                }
+                BodyText(
+                    "Importante: reconocer la voz evita que obedezca a la tele o a visitas, pero no es una " +
+                        "cerradura: una grabación de tu voz podría engañarme. Para lo delicado siempre pediré confirmación.",
+                )
+            }
+            if (hasVoiceProfile) {
+                BigSecondaryButton("Borrar mi huella de voz", onClick = { confirmDeleteVoice = true })
+            }
+
             BigButton("Guardar cambios", onClick = {
                 onSave(
                     settings.copy(
@@ -111,6 +154,8 @@ fun SettingsScreen(
                         speechRate = speechRate,
                         voiceSource = voiceSource,
                         speakOnOpen = speakOnOpen,
+                        ownerVoiceOnly = ownerVoiceOnly,
+                        voiceCheckLevel = voiceCheckLevel,
                     ),
                 )
             })
@@ -118,8 +163,30 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
             SectionTitle("Privacidad")
-            BodyText("Tus datos se guardan solo en este equipo. Puedes borrarlos cuando quieras.")
+            BodyText("Tus datos (incluida tu huella de voz) se guardan solo en este equipo. Puedes borrarlos cuando quieras.")
             BigSecondaryButton("Borrar mis datos", onClick = { confirmDelete = true })
+        }
+
+        if (confirmDeleteVoice) {
+            AlertDialog(
+                onDismissRequest = { confirmDeleteVoice = false },
+                title = { Text("¿Borrar tu huella de voz?", style = MaterialTheme.typography.headlineMedium) },
+                text = {
+                    Text(
+                        "Dejaré de reconocer tu voz hasta que la registres otra vez.",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                },
+                confirmButton = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        BigButton("Sí, borrar", onClick = {
+                            confirmDeleteVoice = false
+                            onDeleteVoiceProfile()
+                        })
+                        BigSecondaryButton("No, cancelar", onClick = { confirmDeleteVoice = false })
+                    }
+                },
+            )
         }
 
         if (confirmDelete) {

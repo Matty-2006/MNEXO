@@ -1,5 +1,8 @@
 package ec.mnexo.listening
 
+import ec.mnexo.voiceprint.SpeakerEmbedder
+import ec.mnexo.voiceprint.VoiceCheck
+import ec.mnexo.voiceprint.VoicePrints
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -11,18 +14,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
-/** Dónde vive el modelo de reconocimiento y cómo se descarga. */
+/** Dónde viven los modelos del oído y cómo se descargan. */
 interface ModelStore {
     val isInstalled: Boolean
 
-    /** Tamaño total a descargar, en bytes. */
-    val totalBytes: Long
+    /** Lo que falta por descargar, en bytes (0 si ya está todo). */
+    val remainingBytes: Long
 
-    /** Carpeta con el modelo, para entregársela al motor. */
+    /** Carpeta con los modelos, para entregársela al motor. */
     val modelDir: String
 
-    /** Descarga y verifica el modelo. [onProgress] recibe valores de 0 a 1. */
+    /** Descarga y verifica los modelos. [onProgress] recibe valores de 0 a 1. */
     suspend fun download(onProgress: (Float) -> Unit)
 }
 
@@ -31,9 +35,10 @@ interface ListenEngine {
     fun openMicrophone(): AudioInput
     fun createVoiceActivityDetector(): VoiceActivityDetector
     fun createSpeechToText(modelDir: String): SpeechToText
+    fun createSpeakerEmbedder(modelDir: String): SpeakerEmbedder
 }
 
-/** "Oído" de MNEXO: descarga única del modelo, luego todo funciona sin internet. */
+/** "Oído" de MNEXO: descarga única de los modelos, luego todo funciona sin internet. */
 class OfflineListener(
     private val store: ModelStore,
     private val engine: ListenEngine,
@@ -46,12 +51,13 @@ class OfflineListener(
     )
     override val state: StateFlow<ListenerState> = _state.asStateFlow()
 
-    override val modelSizeMb: Long get() = store.totalBytes / 1_000_000
+    override val modelSizeMb: Long get() = store.remainingBytes / 1_000_000
 
     private var downloadJob: Job? = null
     private val engineLock = Mutex()
-    private var vad: VoiceActivityDetector? = null
-    private var stt: SpeechToText? = null
+    private var engines: Engines? = null
+
+    private class Engines(val vad: VoiceActivityDetector, val stt: SpeechToText, val embedder: SpeakerEmbedder)
 
     override fun downloadModel() {
         if (downloadJob?.isActive == true || store.isInstalled) return
@@ -73,29 +79,22 @@ class OfflineListener(
         downloadJob?.cancel()
     }
 
-    override suspend fun listen(): ListenResult {
-        if (!store.isInstalled) return ListenResult.Failed(ListenProblem.DOWNLOAD_FAILED)
-
-        val (detector, speechToText) = try {
-            loadEngines()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            return fail(ListenProblem.ENGINE_ERROR)
-        }
-
-        val microphone = try {
-            engine.openMicrophone()
-        } catch (e: MicrophoneUnavailableException) {
-            return fail(e.problem)
-        }
-
-        _state.value = ListenerState.Listening
+    override suspend fun listen(voiceCheck: VoiceCheck?): ListenResult {
+        val loaded = prepare() ?: return failure()
+        val segment = capture(loaded) ?: return lastResult ?: ListenResult.NothingHeard
+        _state.value = ListenerState.Recognizing
         return try {
-            listenOnce(microphone, detector, speechToText, timing) { _state.value = ListenerState.Recognizing }
-                .also { _state.value = ListenerState.Ready }
-        } catch (e: MicrophoneUnavailableException) {
-            fail(e.problem)
+            withContext(Dispatchers.Default) {
+                val text = loaded.stt.transcribe(segment, LISTEN_SAMPLE_RATE).trim()
+                when {
+                    text.isEmpty() -> ListenResult.NothingHeard
+                    voiceCheck == null -> ListenResult.Heard(text)
+                    else -> {
+                        val score = VoicePrints.similarity(loaded.embedder.embed(segment, LISTEN_SAMPLE_RATE), voiceCheck.profile)
+                        if (score >= voiceCheck.threshold) ListenResult.Heard(text) else ListenResult.UnknownSpeaker(text, score)
+                    }
+                }
+            }.also { _state.value = ListenerState.Ready }
         } catch (e: CancellationException) {
             _state.value = ListenerState.Ready
             throw e
@@ -104,17 +103,88 @@ class OfflineListener(
         }
     }
 
-    private suspend fun loadEngines(): Pair<VoiceActivityDetector, SpeechToText> = engineLock.withLock {
-        val loadedVad = vad
-        val loadedStt = stt
-        if (loadedVad != null && loadedStt != null) return@withLock loadedVad to loadedStt
-        _state.value = ListenerState.Preparing
-        val newVad = engine.createVoiceActivityDetector()
-        val newStt = engine.createSpeechToText(store.modelDir)
-        vad = newVad
-        stt = newStt
-        newVad to newStt
+    override suspend fun recordVoiceSample(): VoiceSampleResult {
+        val loaded = prepare() ?: return VoiceSampleResult.Failed(problemOf(lastResult))
+        val segment = capture(loaded) ?: return when (val result = lastResult) {
+            is ListenResult.Failed -> VoiceSampleResult.Failed(result.problem)
+            else -> VoiceSampleResult.NothingHeard
+        }
+        val seconds = segment.size.toFloat() / LISTEN_SAMPLE_RATE
+        if (seconds < VoicePrints.MIN_SAMPLE_SECONDS) {
+            _state.value = ListenerState.Ready
+            return VoiceSampleResult.TooShort
+        }
+        _state.value = ListenerState.Recognizing
+        return try {
+            val embedding = withContext(Dispatchers.Default) { loaded.embedder.embed(segment, LISTEN_SAMPLE_RATE) }
+            _state.value = ListenerState.Ready
+            VoiceSampleResult.Sample(embedding, seconds)
+        } catch (e: CancellationException) {
+            _state.value = ListenerState.Ready
+            throw e
+        } catch (e: Exception) {
+            fail(ListenProblem.ENGINE_ERROR)
+            VoiceSampleResult.Failed(ListenProblem.ENGINE_ERROR)
+        }
     }
+
+    /** Resultado de error del último intento de preparar o capturar (si lo hubo). */
+    private var lastResult: ListenResult? = null
+
+    private suspend fun prepare(): Engines? {
+        lastResult = null
+        if (!store.isInstalled) {
+            lastResult = ListenResult.Failed(ListenProblem.DOWNLOAD_FAILED)
+            return null
+        }
+        return try {
+            loadEngines()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            lastResult = fail(ListenProblem.ENGINE_ERROR)
+            null
+        }
+    }
+
+    /** Abre el micrófono y captura una frase; null si no se oyó nada o si falló (ver [lastResult]). */
+    private suspend fun capture(loaded: Engines): FloatArray? {
+        val microphone = try {
+            engine.openMicrophone()
+        } catch (e: MicrophoneUnavailableException) {
+            lastResult = fail(e.problem)
+            return null
+        }
+        _state.value = ListenerState.Listening
+        return try {
+            captureUtterance(microphone, loaded.vad, timing).also { if (it == null) _state.value = ListenerState.Ready }
+        } catch (e: MicrophoneUnavailableException) {
+            lastResult = fail(e.problem)
+            null
+        } catch (e: CancellationException) {
+            _state.value = ListenerState.Ready
+            throw e
+        } catch (e: Exception) {
+            lastResult = fail(ListenProblem.ENGINE_ERROR)
+            null
+        }
+    }
+
+    private suspend fun loadEngines(): Engines = engineLock.withLock {
+        engines ?: run {
+            _state.value = ListenerState.Preparing
+            Engines(
+                vad = engine.createVoiceActivityDetector(),
+                stt = engine.createSpeechToText(store.modelDir),
+                embedder = engine.createSpeakerEmbedder(store.modelDir),
+            ).also { engines = it }
+        }
+    }
+
+    private fun failure(): ListenResult = lastResult ?: ListenResult.Failed(ListenProblem.ENGINE_ERROR)
+
+    private fun problemOf(result: ListenResult?): ListenProblem =
+        (result as? ListenResult.Failed)?.problem ?: ListenProblem.ENGINE_ERROR
 
     private fun fail(problem: ListenProblem): ListenResult {
         _state.value = ListenerState.Unavailable(problem)
