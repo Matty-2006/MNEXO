@@ -16,6 +16,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import ec.mnexo.conversation.ConversationStore
+import ec.mnexo.conversation.ConversationTurn
 import ec.mnexo.data.settings.SettingsRepository
 import ec.mnexo.data.settings.UserSettings
 import ec.mnexo.listening.ListenProblem
@@ -45,14 +47,16 @@ fun App(
     speaker: Speaker,
     listener: Listener,
     voiceProfiles: VoiceProfileStore,
+    conversations: ConversationStore,
 ) {
-    val viewModel = viewModel { AppViewModel(settingsRepository, speaker, listener, voiceProfiles) }
+    val viewModel = viewModel { AppViewModel(settingsRepository, speaker, listener, voiceProfiles, conversations) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
     val speakerState by viewModel.speakerState.collectAsStateWithLifecycle()
     val lastSpoken by viewModel.lastSpoken.collectAsStateWithLifecycle()
     val listenerState by viewModel.listenerState.collectAsStateWithLifecycle()
-    val heard by viewModel.heard.collectAsStateWithLifecycle()
+    val recentTurns by viewModel.recentTurns.collectAsStateWithLifecycle()
+    val settingsRequested by viewModel.settingsRequested.collectAsStateWithLifecycle()
     val hasVoiceProfile by viewModel.hasVoiceProfile.collectAsStateWithLifecycle()
     val pendingUnknown by viewModel.pendingUnknown.collectAsStateWithLifecycle()
     val enrollment by viewModel.enrollment.collectAsStateWithLifecycle()
@@ -69,7 +73,6 @@ fun App(
 
     fun listenControls(settings: UserSettings) = ListenControls(
         state = listenerState,
-        heard = heard,
         modelSizeMb = viewModel.listenModelSizeMb,
         onTalk = { withMicrophone(viewModel::startListening) },
         onStopListening = viewModel::stopListening,
@@ -136,6 +139,10 @@ fun App(
                         onDeleteAllData = viewModel::deleteAllData,
                         onRegisterVoice = viewModel::startEnrollment,
                         onDeleteVoiceProfile = viewModel::deleteVoiceProfile,
+                        turns = recentTurns,
+                        onSendText = viewModel::sendTypedText,
+                        settingsRequested = settingsRequested,
+                        onSettingsOpened = viewModel::onSettingsOpened,
                     )
                 }
             }
@@ -165,8 +172,20 @@ private fun MainScreens(
     onDeleteAllData: () -> Unit,
     onRegisterVoice: () -> Unit,
     onDeleteVoiceProfile: () -> Unit,
+    turns: List<ConversationTurn>,
+    onSendText: (String) -> Unit,
+    settingsRequested: Boolean,
+    onSettingsOpened: () -> Unit,
 ) {
     var showSettings by rememberSaveable { mutableStateOf(false) }
+
+    // La persona pidió "abre los ajustes" por voz.
+    LaunchedEffect(settingsRequested) {
+        if (settingsRequested) {
+            showSettings = true
+            onSettingsOpened()
+        }
+    }
 
     if (showSettings) {
         SystemBackHandler { showSettings = false }
@@ -187,6 +206,13 @@ private fun MainScreens(
             onDeleteVoiceProfile = onDeleteVoiceProfile,
         )
     } else {
-        HomeScreen(settings = settings, voice = voice, listen = listen, onOpenSettings = { showSettings = true })
+        HomeScreen(
+            settings = settings,
+            voice = voice,
+            listen = listen,
+            turns = turns,
+            onSendText = onSendText,
+            onOpenSettings = { showSettings = true },
+        )
     }
 }

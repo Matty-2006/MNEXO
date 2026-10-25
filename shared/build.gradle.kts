@@ -5,9 +5,21 @@ plugins {
     alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.room)
+}
+
+room {
+    // Esquemas de la base de datos (versionados en Git): documentan el modelo y permiten migraciones.
+    schemaDirectory("$projectDir/schemas")
 }
 
 kotlin {
+    compilerOptions {
+        // Room usa "expect object" para construir la base de datos en cada plataforma.
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
+
     jvm()
     
     android {
@@ -53,6 +65,11 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtimeCompose)
             // Preferencias guardadas en el propio equipo (Android y Windows)
             implementation(libs.androidx.datastore.preferences.core)
+            // Base de datos local (historial de conversación; luego métricas, encuestas...)
+            implementation(libs.androidx.room.runtime)
+            implementation(libs.androidx.sqlite.bundled)
+            // Fecha y hora local ("¿qué hora es?")
+            implementation(libs.kotlinx.datetime)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -63,4 +80,7 @@ kotlin {
 
 dependencies {
     androidRuntimeClasspath(libs.compose.uiTooling)
+    // Room genera el código de la base de datos para cada plataforma.
+    add("kspAndroid", libs.androidx.room.compiler)
+    add("kspJvm", libs.androidx.room.compiler)
 }

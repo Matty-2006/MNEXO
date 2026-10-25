@@ -27,8 +27,6 @@ import ec.mnexo.voice.Phrases
 /** Todo lo que la pantalla necesita para usar el oído. */
 class ListenControls(
     val state: ListenerState,
-    /** Lo último que entendió el asistente. */
-    val heard: String?,
     val modelSizeMb: Long,
     val onTalk: () -> Unit,
     val onStopListening: () -> Unit,
@@ -105,20 +103,6 @@ fun ListenPanel(controls: ListenControls) {
             BigSecondaryButton("Registrar mi voz", onClick = controls.onRegisterVoice)
         }
 
-        controls.heard?.let { text ->
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
-            ) {
-                Text(
-                    text = "Entendí: «$text»",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(20.dp),
-                )
-            }
-        }
     }
 }
 

@@ -12,6 +12,9 @@ enum class SpeechRate(val multiplier: Float, val label: String) {
     /** Un nivel más despacio; si ya es la más lenta, se queda igual. */
     fun slower(): SpeechRate = entries.getOrElse(ordinal - 1) { this }
 
+    /** Un nivel más rápido; si ya es la más rápida, se queda igual. */
+    fun faster(): SpeechRate = entries.getOrElse(ordinal + 1) { this }
+
     val isSlowest: Boolean get() = ordinal == 0
 
     companion object {

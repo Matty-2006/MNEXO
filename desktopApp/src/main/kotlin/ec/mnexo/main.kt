@@ -4,6 +4,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import ec.mnexo.data.db.createConversationStore
 import ec.mnexo.data.settings.SETTINGS_FILE_NAME
 import ec.mnexo.data.settings.createSettingsRepository
 import ec.mnexo.listening.HttpModelStore
@@ -32,6 +33,8 @@ fun main() {
     )
     // Huella de voz del dueño, cifrada con DPAPI (solo este usuario de Windows puede leerla).
     val voiceProfiles = DpapiVoiceProfileStore(File(dataDir, "voiceprint.bin"))
+    // Historial de conversación en la base de datos local (Room / SQLite).
+    val conversations = createConversationStore(dataDir)
 
     application {
         Window(
@@ -43,7 +46,13 @@ fun main() {
             // Ventana amplia desde el inicio para que el texto grande se lea sin redimensionar.
             state = rememberWindowState(width = 900.dp, height = 760.dp),
         ) {
-            App(settingsRepository = settingsRepository, speaker = speaker, listener = listener, voiceProfiles = voiceProfiles)
+            App(
+                settingsRepository = settingsRepository,
+                speaker = speaker,
+                listener = listener,
+                voiceProfiles = voiceProfiles,
+                conversations = conversations,
+            )
         }
     }
 }

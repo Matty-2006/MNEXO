@@ -18,6 +18,7 @@ class MainActivity : ComponentActivity() {
                 speaker = mnexo.speaker,
                 listener = mnexo.listener,
                 voiceProfiles = mnexo.voiceProfiles,
+                conversations = mnexo.conversations,
             )
         }
     }

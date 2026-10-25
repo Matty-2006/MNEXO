@@ -8,7 +8,18 @@ import ec.mnexo.listening.ListenProblem
 import ec.mnexo.listening.ListenResult
 import ec.mnexo.listening.Listener
 import ec.mnexo.listening.ListenerState
+import ec.mnexo.conversation.AppAction
+import ec.mnexo.conversation.ConversationContext
+import ec.mnexo.conversation.ConversationEngine
+import ec.mnexo.conversation.ConversationStore
+import ec.mnexo.conversation.ConversationTurn
+import ec.mnexo.conversation.SystemTime
+import ec.mnexo.conversation.TimeProvider
+import ec.mnexo.conversation.TurnRole
+import ec.mnexo.conversation.currentEpochMillis
+import ec.mnexo.data.settings.DEFAULT_ASSISTANT_NAME
 import ec.mnexo.listening.VoiceSampleResult
+import ec.mnexo.understanding.RuleBasedUnderstander
 import ec.mnexo.voiceprint.VoiceCheck
 import ec.mnexo.voiceprint.VoicePrints
 import ec.mnexo.voiceprint.VoiceProfileStore
@@ -58,7 +69,17 @@ class AppViewModel(
     private val speaker: Speaker,
     private val listener: Listener,
     private val voiceProfiles: VoiceProfileStore,
+    private val conversations: ConversationStore,
+    time: TimeProvider = SystemTime,
 ) : ViewModel() {
+
+    private val engine = ConversationEngine(
+        understander = RuleBasedUnderstander { currentSettings()?.assistantName ?: DEFAULT_ASSISTANT_NAME },
+        time = time,
+    )
+
+    /** Lo que el asistente recuerda de esta conversación (por ejemplo, el último ajuste para "un poco más"). */
+    private var conversationContext = ConversationContext()
 
     val uiState: StateFlow<AppUiState> = repository.settings
         .map { if (it.onboardingCompleted) AppUiState.Ready(it) else AppUiState.Onboarding(it) }
@@ -87,11 +108,12 @@ class AppViewModel(
         stopListening()
         speaker.stop()
         _lastSpoken.value = null
-        _heard.value = null
         _pendingUnknown.value = null
+        conversationContext = ConversationContext()
         viewModelScope.launch {
             try {
                 deleteVoiceProfileNow()
+                conversations.clear()
                 repository.clear()
                 _errorMessage.value = null
             } catch (e: IOException) {
@@ -151,11 +173,6 @@ class AppViewModel(
 
     val listenModelSizeMb: Long get() = listener.modelSizeMb
 
-    private val _heard = MutableStateFlow<String?>(null)
-
-    /** Lo último que el asistente entendió, para mostrarlo en pantalla. */
-    val heard: StateFlow<String?> = _heard.asStateFlow()
-
     private var listenJob: Job? = null
 
     fun downloadListenModel() = listener.downloadModel()
@@ -173,7 +190,7 @@ class AppViewModel(
             ?.let { VoiceCheck(it, settings.voiceCheckLevel.threshold) }
         listenJob = viewModelScope.launch {
             when (val result = listener.listen(voiceCheck)) {
-                is ListenResult.Heard -> acceptHeard(result.text, settings)
+                is ListenResult.Heard -> handleUserText(result.text)
                 is ListenResult.UnknownSpeaker -> {
                     // No se repite en voz alta lo que dijo otra persona (privacidad); se pregunta si es el dueño.
                     _pendingUnknown.value = result.text
@@ -185,9 +202,64 @@ class AppViewModel(
         }
     }
 
-    private fun acceptHeard(text: String, settings: UserSettings) {
-        _heard.value = text
-        say(Phrases.heard(text), settings.speechRate)
+    // ---- Conversación ----
+
+    /** Los últimos turnos de la conversación, para mostrarlos en pantalla. */
+    val recentTurns: StateFlow<List<ConversationTurn>> = conversations.recent(RECENT_TURNS)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val _settingsRequested = MutableStateFlow(false)
+
+    /** La persona pidió por voz abrir los ajustes. */
+    val settingsRequested: StateFlow<Boolean> = _settingsRequested.asStateFlow()
+
+    fun onSettingsOpened() {
+        _settingsRequested.value = false
+    }
+
+    /** La persona escribió en lugar de hablar: se trata igual que si lo hubiera dicho. */
+    fun sendTypedText(text: String) {
+        if (text.isBlank()) return
+        stopListening()
+        speaker.stop()
+        handleUserText(text.trim())
+    }
+
+    /**
+     * Corazón de la conversación: entiende la frase, ejecuta la acción (si la hay), responde en voz
+     * alta y guarda ambos turnos en el historial.
+     */
+    private fun handleUserText(text: String) {
+        val settings = currentSettings() ?: return
+        val (outcome, newContext) = engine.respond(text, settings, conversationContext)
+        conversationContext = newContext
+        remember(ConversationTurn(TurnRole.PERSONA, text, outcome.understanding.intent.name, currentEpochMillis()))
+
+        val effectiveSettings = (outcome.action as? AppAction.UpdateSettings)?.settings ?: settings
+        when (val action = outcome.action) {
+            AppAction.None -> Unit
+            AppAction.StopSpeaking -> speaker.stop()
+            AppAction.RepeatLast -> repeatLast()
+            AppAction.RepeatSlower -> repeatSlower()
+            AppAction.OpenSettings -> _settingsRequested.value = true
+            is AppAction.UpdateSettings -> save(action.settings)
+        }
+        outcome.reply?.let { reply ->
+            // Si cambió la velocidad, la respuesta ya se dice a la velocidad nueva.
+            say(reply, effectiveSettings.speechRate)
+        }
+        val assistantText = outcome.reply ?: _lastSpoken.value.takeIf { outcome.action != AppAction.StopSpeaking }
+        assistantText?.let { remember(ConversationTurn(TurnRole.ASISTENTE, it, timestampMs = currentEpochMillis())) }
+    }
+
+    private fun remember(turn: ConversationTurn) {
+        viewModelScope.launch {
+            try {
+                conversations.add(turn)
+            } catch (e: Exception) {
+                // El historial es una ayuda; si no se puede guardar, la conversación sigue igual.
+            }
+        }
     }
 
     // ---- Una sola voz ----
@@ -213,9 +285,8 @@ class AppViewModel(
     /** La persona confirma que sí era ella: se acepta lo que dijo. */
     fun confirmUnknownSpeakerIsOwner() {
         val text = _pendingUnknown.value ?: return
-        val settings = currentSettings() ?: return
         _pendingUnknown.value = null
-        acceptHeard(text, settings)
+        handleUserText(text)
     }
 
     fun ignoreUnknownSpeaker() {
@@ -341,5 +412,10 @@ class AppViewModel(
                 _errorMessage.value = "No pude guardar los cambios. Inténtalo de nuevo."
             }
         }
+    }
+
+    private companion object {
+        /** Cuántos turnos recientes se muestran en pantalla. */
+        const val RECENT_TURNS = 6
     }
 }

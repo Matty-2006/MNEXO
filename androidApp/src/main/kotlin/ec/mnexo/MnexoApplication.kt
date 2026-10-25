@@ -1,6 +1,8 @@
 package ec.mnexo
 
 import android.app.Application
+import ec.mnexo.conversation.ConversationStore
+import ec.mnexo.data.db.createConversationStore
 import ec.mnexo.data.settings.SETTINGS_FILE_NAME
 import ec.mnexo.data.settings.SettingsRepository
 import ec.mnexo.data.settings.createSettingsRepository
@@ -41,4 +43,7 @@ class MnexoApplication : Application() {
 
     /** Huella de voz del dueño, cifrada con el Android Keystore. */
     val voiceProfiles: VoiceProfileStore by lazy { KeystoreVoiceProfileStore(this) }
+
+    /** Historial de conversación en la base de datos local (Room / SQLite). */
+    val conversations: ConversationStore by lazy { createConversationStore(this) }
 }
