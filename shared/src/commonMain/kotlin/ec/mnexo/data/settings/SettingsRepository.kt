@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import ec.mnexo.voice.SpeechRate
+import ec.mnexo.voice.VoiceSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -35,6 +36,7 @@ class DataStoreSettingsRepository(
                 textSize = TextSize.fromStored(prefs[Keys.TEXT_SIZE]),
                 highContrast = prefs[Keys.HIGH_CONTRAST] ?: false,
                 speechRate = SpeechRate.fromStored(prefs[Keys.SPEECH_RATE]),
+                voiceSource = VoiceSource.fromStored(prefs[Keys.VOICE_SOURCE]),
                 speakOnOpen = prefs[Keys.SPEAK_ON_OPEN] ?: true,
                 onboardingCompleted = prefs[Keys.ONBOARDING_COMPLETED] ?: false,
             )
@@ -47,6 +49,7 @@ class DataStoreSettingsRepository(
             prefs[Keys.TEXT_SIZE] = settings.textSize.name
             prefs[Keys.HIGH_CONTRAST] = settings.highContrast
             prefs[Keys.SPEECH_RATE] = settings.speechRate.name
+            prefs[Keys.VOICE_SOURCE] = settings.voiceSource.name
             prefs[Keys.SPEAK_ON_OPEN] = settings.speakOnOpen
             prefs[Keys.ONBOARDING_COMPLETED] = settings.onboardingCompleted
         }
@@ -62,6 +65,7 @@ class DataStoreSettingsRepository(
         val TEXT_SIZE = stringPreferencesKey("text_size")
         val HIGH_CONTRAST = booleanPreferencesKey("high_contrast")
         val SPEECH_RATE = stringPreferencesKey("speech_rate")
+        val VOICE_SOURCE = stringPreferencesKey("voice_source")
         val SPEAK_ON_OPEN = booleanPreferencesKey("speak_on_open")
         val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
     }

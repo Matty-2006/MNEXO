@@ -28,6 +28,7 @@ import ec.mnexo.ui.components.VoiceControls
 import ec.mnexo.ui.components.VoiceStatus
 import ec.mnexo.ui.theme.MnexoTheme
 import ec.mnexo.voice.SpeechRate
+import ec.mnexo.voice.VoiceSource
 
 /**
  * Ajustes: los cambios se previsualizan al instante (y la velocidad se escucha), pero solo
@@ -47,9 +48,11 @@ fun SettingsScreen(
     var highContrast by rememberSaveable { mutableStateOf(settings.highContrast) }
     var speechRateName by rememberSaveable { mutableStateOf(settings.speechRate.name) }
     var speakOnOpen by rememberSaveable { mutableStateOf(settings.speakOnOpen) }
+    var voiceSourceName by rememberSaveable { mutableStateOf(settings.voiceSource.name) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val textSize = TextSize.fromStored(textSizeName)
     val speechRate = SpeechRate.fromStored(speechRateName)
+    val voiceSource = VoiceSource.fromStored(voiceSourceName)
 
     MnexoTheme(textSize = textSize, highContrast = highContrast) {
         ScreenColumn {
@@ -69,7 +72,18 @@ fun SettingsScreen(
             BigSwitchRow(text = "Alto contraste", checked = highContrast, onCheckedChange = { highContrast = it })
 
             SectionTitle("Voz")
-            BodyText("Toca una velocidad para escucharla.")
+            BodyText("¿Qué voz uso? Toca una opción para escucharla.")
+            VoiceSource.entries.forEach { option ->
+                BigRadioOption(
+                    text = option.label,
+                    selected = option == voiceSource,
+                    onSelect = {
+                        voiceSourceName = option.name
+                        voice.onPreviewSource(option)
+                    },
+                )
+            }
+            BodyText("¿A qué velocidad hablo? Toca una para escucharla.")
             SpeechRate.entries.forEach { rate ->
                 BigRadioOption(
                     text = rate.label,
@@ -95,6 +109,7 @@ fun SettingsScreen(
                         textSize = textSize,
                         highContrast = highContrast,
                         speechRate = speechRate,
+                        voiceSource = voiceSource,
                         speakOnOpen = speakOnOpen,
                     ),
                 )

@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import ec.mnexo.voice.Phrases
 import ec.mnexo.voice.SpeakerState
 import ec.mnexo.voice.SpeechRate
+import ec.mnexo.voice.VoiceSource
 import ec.mnexo.voice.VoiceProblem
 
 /** Todo lo que las pantallas necesitan para usar la voz, agrupado para no pasar diez parámetros sueltos. */
@@ -26,6 +27,7 @@ class VoiceControls(
     val onRepeat: () -> Unit,
     val onRepeatSlower: () -> Unit,
     val onPreviewRate: (SpeechRate) -> Unit,
+    val onPreviewSource: (VoiceSource) -> Unit,
     val onOpenVoiceSetup: () -> Unit,
 )
 

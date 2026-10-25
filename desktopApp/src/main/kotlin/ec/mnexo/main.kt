@@ -6,6 +6,8 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import ec.mnexo.data.settings.SETTINGS_FILE_NAME
 import ec.mnexo.data.settings.createSettingsRepository
+import ec.mnexo.voice.FallbackSpeaker
+import ec.mnexo.voice.SherpaDesktopSpeaker
 import ec.mnexo.voice.WindowsSpeaker
 import java.io.File
 
@@ -13,7 +15,11 @@ fun main() {
     // En Windows los datos van a %APPDATA%\MNEXO (por ejemplo C:\Users\Mateo\AppData\Roaming\MNEXO).
     val dataDir = File(System.getenv("APPDATA") ?: System.getProperty("user.home"), "MNEXO").apply { mkdirs() }
     val settingsRepository = createSettingsRepository(File(dataDir, SETTINGS_FILE_NAME).absolutePath)
-    val speaker = WindowsSpeaker()
+    // Voz de Windows si tiene español; si no, la voz propia de MNEXO.
+    val speaker = FallbackSpeaker(
+        system = WindowsSpeaker(),
+        own = SherpaDesktopSpeaker(SherpaDesktopSpeaker.findVoiceDir()),
+    )
 
     application {
         Window(

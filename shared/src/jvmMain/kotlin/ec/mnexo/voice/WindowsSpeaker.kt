@@ -35,6 +35,27 @@ class WindowsSpeaker(
     private val lock = Any()
     private var current: Process? = null
 
+    init {
+        // Comprobación rápida (sin PowerShell): si Windows no tiene voces en español, se avisa desde
+        // el inicio para que el altavoz combinado use directamente la voz propia de MNEXO.
+        if (isWindows) {
+            scope.launch {
+                if (registryVoiceNames()?.none(::isSpanishVoiceToken) == true) {
+                    _state.value = SpeakerState.Unavailable(VoiceProblem.NO_SPANISH_VOICE)
+                }
+            }
+        }
+    }
+
+    /** Nombres de las voces registradas en Windows, o null si no se pudo consultar. */
+    private fun registryVoiceNames(): List<String>? = try {
+        val process = ProcessBuilder("reg", "query", VOICES_REGISTRY_KEY).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+        if (process.waitFor() == 0) output.lines().map { it.substringAfterLast('\\').trim() }.filter { it.isNotEmpty() } else null
+    } catch (e: IOException) {
+        null
+    }
+
     override fun speak(text: String, rate: SpeechRate) {
         if (!isWindows) return
         stop()
@@ -91,6 +112,10 @@ class WindowsSpeaker(
     internal companion object {
         const val MAX_CHARS = 1500
         const val EXIT_NO_SPANISH_VOICE = 3
+        private const val VOICES_REGISTRY_KEY = """HKLM\SOFTWARE\Microsoft\Speech_OneCore\Voices\Tokens"""
+
+        /** Las voces de Windows se llaman, por ejemplo, "MSTTS_V110_esMX_SabinaM". */
+        fun isSpanishVoiceToken(name: String): Boolean = Regex("_es[A-Z]{2}_").containsMatchIn(name)
 
         /** Script de PowerShell con dos marcadores que se reemplazan: velocidad y texto en Base64. */
         private val SCRIPT_TEMPLATE = """

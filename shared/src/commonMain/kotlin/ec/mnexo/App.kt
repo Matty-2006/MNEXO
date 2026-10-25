@@ -48,6 +48,7 @@ fun App(settingsRepository: SettingsRepository, speaker: Speaker) {
         onRepeat = viewModel::repeatLast,
         onRepeatSlower = viewModel::repeatSlower,
         onPreviewRate = viewModel::previewRate,
+        onPreviewSource = viewModel::previewSource,
         onOpenVoiceSetup = { viewModel.openVoiceSetup() },
     )
 

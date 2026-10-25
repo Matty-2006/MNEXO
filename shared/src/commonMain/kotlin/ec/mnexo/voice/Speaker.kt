@@ -19,6 +19,18 @@ enum class SpeechRate(val multiplier: Float, val label: String) {
     }
 }
 
+/** Qué voz usar. */
+enum class VoiceSource(val label: String) {
+    /** La del equipo si tiene español; si no, la propia de MNEXO. */
+    AUTOMATICA("Automática (recomendada)"),
+    EQUIPO("La voz de este equipo"),
+    MNEXO("La voz propia de MNEXO");
+
+    companion object {
+        fun fromStored(value: String?): VoiceSource = entries.firstOrNull { it.name == value } ?: AUTOMATICA
+    }
+}
+
 enum class VoiceProblem {
     /** El equipo no tiene instalada una voz en español. */
     NO_SPANISH_VOICE,
@@ -53,4 +65,7 @@ interface Speaker {
 
     /** Abre la pantalla del sistema para instalar voces en español. Devuelve false si no pudo abrirla. */
     fun openVoiceSetup(): Boolean
+
+    /** Qué voz prefiere la persona. Solo lo usa el altavoz combinado; los demás lo ignoran. */
+    fun setPreferredSource(source: VoiceSource) {}
 }

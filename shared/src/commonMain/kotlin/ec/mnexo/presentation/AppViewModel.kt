@@ -8,6 +8,7 @@ import ec.mnexo.voice.Phrases
 import ec.mnexo.voice.SpeakerState
 import ec.mnexo.voice.Speaker
 import ec.mnexo.voice.SpeechRate
+import ec.mnexo.voice.VoiceSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -93,7 +94,7 @@ class AppViewModel(
 
     fun repeatLast() {
         val settings = currentSettings() ?: return
-        _lastSpoken.value?.let { speaker.speak(it, settings.speechRate) }
+        _lastSpoken.value?.let { say(it, settings.speechRate) }
     }
 
     /** "Más despacio": baja un nivel la velocidad, la deja guardada y repite la última frase. */
@@ -101,12 +102,18 @@ class AppViewModel(
         val settings = currentSettings() ?: return
         val slower = settings.speechRate.slower()
         if (slower != settings.speechRate) save(settings.copy(speechRate = slower))
-        _lastSpoken.value?.let { speaker.speak(it, slower) }
+        _lastSpoken.value?.let { say(it, slower) }
     }
 
     /** Muestra cómo suena una velocidad sin guardarla todavía. */
     fun previewRate(rate: SpeechRate) {
         say(Phrases.rateSample(rate), rate)
+    }
+
+    /** Muestra cómo suena una voz sin guardarla todavía. */
+    fun previewSource(source: VoiceSource) {
+        val settings = currentSettings() ?: return
+        say(Phrases.sourceSample(source), settings.speechRate, source)
     }
 
     fun stopSpeaking() = speaker.stop()
@@ -117,8 +124,10 @@ class AppViewModel(
         speaker.stop()
     }
 
-    private fun say(text: String, rate: SpeechRate) {
+    /** Todo lo que dice el asistente pasa por aquí: aplica la voz elegida y recuerda la frase. */
+    private fun say(text: String, rate: SpeechRate, source: VoiceSource? = null) {
         _lastSpoken.value = text
+        (source ?: currentSettings()?.voiceSource)?.let(speaker::setPreferredSource)
         speaker.speak(text, rate)
     }
 

@@ -11,6 +11,12 @@ object Phrases {
     fun rateSample(rate: SpeechRate): String =
         "Así hablo a velocidad ${rate.label.lowercase()}. ¿Te parece bien?"
 
+    fun sourceSample(source: VoiceSource): String = when (source) {
+        VoiceSource.AUTOMATICA -> "Usaré la mejor voz disponible en este equipo."
+        VoiceSource.EQUIPO -> "Esta es la voz de este equipo."
+        VoiceSource.MNEXO -> "Esta es mi voz propia. Funciona en cualquier equipo, sin internet."
+    }
+
     fun problemMessage(problem: VoiceProblem): String = when (problem) {
         VoiceProblem.NO_SPANISH_VOICE ->
             "Este equipo no tiene una voz en español instalada. Toca el botón para instalarla."

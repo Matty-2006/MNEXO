@@ -5,6 +5,8 @@ import ec.mnexo.data.settings.SETTINGS_FILE_NAME
 import ec.mnexo.data.settings.SettingsRepository
 import ec.mnexo.data.settings.createSettingsRepository
 import ec.mnexo.voice.AndroidSpeaker
+import ec.mnexo.voice.FallbackSpeaker
+import ec.mnexo.voice.SherpaAndroidSpeaker
 import ec.mnexo.voice.Speaker
 
 /**
@@ -17,5 +19,8 @@ class MnexoApplication : Application() {
         createSettingsRepository(filesDir.resolve(SETTINGS_FILE_NAME).absolutePath)
     }
 
-    val speaker: Speaker by lazy { AndroidSpeaker(this) }
+    /** Voz del celular si tiene español; si no, la voz propia de MNEXO. */
+    val speaker: Speaker by lazy {
+        FallbackSpeaker(system = AndroidSpeaker(this), own = SherpaAndroidSpeaker(this))
+    }
 }

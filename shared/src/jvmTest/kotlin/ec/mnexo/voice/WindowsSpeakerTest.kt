@@ -22,6 +22,13 @@ class WindowsSpeakerTest {
     }
 
     @Test
+    fun reconoceLasVocesEnEspanolDeWindows() {
+        assertTrue(WindowsSpeaker.isSpanishVoiceToken("MSTTS_V110_esMX_SabinaM"))
+        assertTrue(WindowsSpeaker.isSpanishVoiceToken("MSTTS_V110_esES_HelenaM"))
+        assertFalse(WindowsSpeaker.isSpanishVoiceToken("MSTTS_V110_enUS_ZiraM"))
+    }
+
+    @Test
     fun laVelocidadUsaPuntoDecimalSinImportarElIdiomaDelEquipo() {
         val script = decodeScript(WindowsSpeaker.buildEncodedCommand("Hola", SpeechRate.PAUSADA))
 
