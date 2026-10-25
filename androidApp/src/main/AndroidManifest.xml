@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Micrófono: para escuchar a la persona. Se pide justo antes de usarlo y el audio nunca se guarda. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Internet: SOLO para descargar una vez el modelo de reconocimiento de voz. Después todo funciona sin conexión. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Desde Android 11 hay que declarar que la app usará un motor de voz (TextToSpeech). -->
     <queries>
         <intent>

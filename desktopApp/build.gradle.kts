@@ -43,10 +43,12 @@ tasks.named("compileKotlin") {
     dependsOn(":downloadSherpaJvm", ":downloadSherpaWindows")
 }
 tasks.matching { it.name == "prepareAppResources" }.configureEach {
-    dependsOn(":extractVoiceModel")
+    dependsOn(":extractVoiceModel", ":prepareVad")
 }
 tasks.withType<Test>().configureEach {
-    dependsOn(":extractVoiceModel")
-    // La prueba de la voz propia necesita saber dónde está el modelo.
+    dependsOn(":extractVoiceModel", ":prepareVad", ":prepareAsrForTests")
+    // Las pruebas reales de voz y oído necesitan saber dónde están los modelos.
     systemProperty("mnexo.voice.dir", voiceCache.dir("app-resources/common/voice/es_MX-claude").asFile.absolutePath)
+    systemProperty("mnexo.vad.file", voiceCache.file("app-resources/common/listen/silero_vad.onnx").asFile.absolutePath)
+    systemProperty("mnexo.asr.dir", voiceCache.dir("asr-es-test").asFile.absolutePath)
 }

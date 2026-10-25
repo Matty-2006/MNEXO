@@ -32,6 +32,10 @@ kotlin {
     }
     
     sourceSets {
+        // Código que usa Java puro (descargas, SHA-256) y sirve igual en Android y en escritorio.
+        getByName("androidMain").kotlin.srcDir("src/jvmShared/kotlin")
+        getByName("jvmMain").kotlin.srcDir("src/jvmShared/kotlin")
+
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.compose.uiTooling)

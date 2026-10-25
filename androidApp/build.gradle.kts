@@ -74,5 +74,5 @@ android {
 }
 
 tasks.named("preBuild") {
-    dependsOn(":downloadSherpaAndroid", ":extractVoiceModel")
+    dependsOn(":downloadSherpaAndroid", ":extractVoiceModel", ":prepareVad")
 }

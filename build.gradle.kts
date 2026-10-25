@@ -99,15 +99,50 @@ val extractVoiceModel by tasks.registering(Sync::class) {
         eachFile {
             val inner = relativePath.segments.drop(1).toMutableList()
             if (inner.lastOrNull() == "es_MX-claude-high.onnx") inner[inner.lastIndex] = "model.onnx"
-            relativePath = RelativePath(true, *(listOf("voice", "es_MX-claude") + inner).toTypedArray())
+            relativePath = RelativePath(true, *inner.toTypedArray())
         }
     }
     includeEmptyDirs = false
-    into(layout.projectDirectory.dir(".voice-cache/app-resources/common"))
+    into(layout.projectDirectory.dir(".voice-cache/app-resources/common/voice/es_MX-claude"))
+}
+
+// Detector de voz Silero VAD (MIT, 0,6 MB): sabe cuándo la persona empieza y termina de hablar.
+val downloadSileroVad by tasks.registering(DownloadVerified::class) {
+    url = "$sherpaReleases/asr-models/silero_vad.onnx"
+    sha256 = "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6"
+    destination = voiceDownloads.file("silero_vad.onnx")
+}
+
+val prepareVad by tasks.registering(Sync::class) {
+    from(downloadSileroVad.flatMap { it.destination })
+    into(layout.projectDirectory.dir(".voice-cache/app-resources/common/listen"))
 }
 
 tasks.register("prepareVoice") {
     group = "mnexo"
-    description = "Descarga y prepara la voz propia de MNEXO (motor sherpa-onnx y voz es_MX)."
-    dependsOn(downloadSherpaAndroid, downloadSherpaJvm, downloadSherpaWindows, extractVoiceModel)
+    description = "Descarga y prepara la voz propia de MNEXO (motor sherpa-onnx, voz es_MX y detector de voz)."
+    dependsOn(downloadSherpaAndroid, downloadSherpaJvm, downloadSherpaWindows, extractVoiceModel, prepareVad)
+}
+
+// El "oído" (reconocimiento de voz NVIDIA FastConformer es, CC-BY-4.0) NO va dentro de la app: la app lo
+// descarga una sola vez. Aquí solo se descarga para las pruebas automáticas en la PC.
+val asrModelRepo = "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-fast-conformer-ctc-es-1424-int8/resolve/05a9908f7571fd39c774445806dfb8189bcdb43d"
+val asrTestDir = layout.projectDirectory.dir(".voice-cache/asr-es-test")
+
+val downloadAsrModelForTests by tasks.registering(DownloadVerified::class) {
+    url = "$asrModelRepo/model.int8.onnx"
+    sha256 = "9539b206ba7cb46231e24eb1f1d7269370bfd45209c549d70e2bfd0e9f3b021a"
+    destination = asrTestDir.file("model.int8.onnx")
+}
+
+val downloadAsrTokensForTests by tasks.registering(DownloadVerified::class) {
+    url = "$asrModelRepo/tokens.txt"
+    sha256 = "6191b4853e3654f053c42f6fd184ca53b402987aefdd6ff6baa68034d803ee85"
+    destination = asrTestDir.file("tokens.txt")
+}
+
+tasks.register("prepareAsrForTests") {
+    group = "mnexo"
+    description = "Descarga el modelo de reconocimiento de voz solo para las pruebas en la PC."
+    dependsOn(downloadAsrModelForTests, downloadAsrTokensForTests)
 }

@@ -18,7 +18,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import ec.mnexo.data.settings.SettingsRepository
 import ec.mnexo.data.settings.UserSettings
+import ec.mnexo.listening.Listener
 import ec.mnexo.platform.SystemBackHandler
+import ec.mnexo.platform.rememberMicrophonePermission
+import ec.mnexo.ui.components.ListenControls
 import ec.mnexo.presentation.AppUiState
 import ec.mnexo.presentation.AppViewModel
 import ec.mnexo.ui.components.VoiceControls
@@ -33,12 +36,31 @@ import ec.mnexo.voice.Speaker
  * Cada plataforma le entrega dónde guardar los datos y su motor de voz.
  */
 @Composable
-fun App(settingsRepository: SettingsRepository, speaker: Speaker) {
-    val viewModel = viewModel { AppViewModel(settingsRepository, speaker) }
+fun App(settingsRepository: SettingsRepository, speaker: Speaker, listener: Listener) {
+    val viewModel = viewModel { AppViewModel(settingsRepository, speaker, listener) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
     val speakerState by viewModel.speakerState.collectAsStateWithLifecycle()
     val lastSpoken by viewModel.lastSpoken.collectAsStateWithLifecycle()
+    val listenerState by viewModel.listenerState.collectAsStateWithLifecycle()
+    val heard by viewModel.heard.collectAsStateWithLifecycle()
+    val microphone = rememberMicrophonePermission()
+
+    val listen = ListenControls(
+        state = listenerState,
+        heard = heard,
+        modelSizeMb = viewModel.listenModelSizeMb,
+        onTalk = {
+            // El permiso se pide justo cuando hace falta, nunca antes.
+            microphone.request { granted ->
+                if (granted) viewModel.startListening() else viewModel.onMicrophonePermissionDenied()
+            }
+        },
+        onStopListening = viewModel::stopListening,
+        onDownload = viewModel::downloadListenModel,
+        onCancelDownload = viewModel::cancelListenModelDownload,
+        onOpenMicrophoneSettings = microphone::openAppSettings,
+    )
 
     val voice = VoiceControls(
         state = speakerState,
@@ -72,6 +94,7 @@ fun App(settingsRepository: SettingsRepository, speaker: Speaker) {
             MainScreens(
                 settings = current.settings,
                 voice = voice,
+                listen = listen,
                 onSave = viewModel::updateSettings,
                 onDeleteAllData = viewModel::deleteAllData,
             )
@@ -95,6 +118,7 @@ fun App(settingsRepository: SettingsRepository, speaker: Speaker) {
 private fun MainScreens(
     settings: UserSettings,
     voice: VoiceControls,
+    listen: ListenControls,
     onSave: (UserSettings) -> Unit,
     onDeleteAllData: () -> Unit,
 ) {
@@ -117,7 +141,7 @@ private fun MainScreens(
                 },
             )
         } else {
-            HomeScreen(settings = settings, voice = voice, onOpenSettings = { showSettings = true })
+            HomeScreen(settings = settings, voice = voice, listen = listen, onOpenSettings = { showSettings = true })
         }
     }
 }

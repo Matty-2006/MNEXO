@@ -4,6 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ec.mnexo.data.settings.SettingsRepository
 import ec.mnexo.data.settings.UserSettings
+import ec.mnexo.listening.ListenProblem
+import ec.mnexo.listening.ListenResult
+import ec.mnexo.listening.Listener
+import ec.mnexo.listening.ListenerState
+import kotlinx.coroutines.Job
 import ec.mnexo.voice.Phrases
 import ec.mnexo.voice.SpeakerState
 import ec.mnexo.voice.Speaker
@@ -35,6 +40,7 @@ sealed interface AppUiState {
 class AppViewModel(
     private val repository: SettingsRepository,
     private val speaker: Speaker,
+    private val listener: Listener,
 ) : ViewModel() {
 
     val uiState: StateFlow<AppUiState> = repository.settings
@@ -61,8 +67,10 @@ class AppViewModel(
     fun updateSettings(settings: UserSettings) = save(settings)
 
     fun deleteAllData() {
+        stopListening()
         speaker.stop()
         _lastSpoken.value = null
+        _heard.value = null
         viewModelScope.launch {
             try {
                 repository.clear()
@@ -118,9 +126,56 @@ class AppViewModel(
 
     fun stopSpeaking() = speaker.stop()
 
+    // ---- Oído ----
+
+    val listenerState: StateFlow<ListenerState> = listener.state
+
+    val listenModelSizeMb: Long get() = listener.modelSizeMb
+
+    private val _heard = MutableStateFlow<String?>(null)
+
+    /** Lo último que el asistente entendió, para mostrarlo en pantalla. */
+    val heard: StateFlow<String?> = _heard.asStateFlow()
+
+    private var listenJob: Job? = null
+
+    fun downloadListenModel() = listener.downloadModel()
+
+    fun cancelListenModelDownload() = listener.cancelDownload()
+
+    /** Escucha una frase y confirma en voz alta lo que entendió. */
+    fun startListening() {
+        if (listenJob?.isActive == true) return
+        val settings = currentSettings() ?: return
+        // Se calla antes de escuchar, para no oírse a sí mismo.
+        speaker.stop()
+        listenJob = viewModelScope.launch {
+            when (val result = listener.listen()) {
+                is ListenResult.Heard -> {
+                    _heard.value = result.text
+                    say(Phrases.heard(result.text), settings.speechRate)
+                }
+                ListenResult.NothingHeard -> say(Phrases.NOTHING_HEARD, settings.speechRate)
+                is ListenResult.Failed -> say(Phrases.listenProblemMessage(result.problem), settings.speechRate)
+            }
+        }
+    }
+
+    fun stopListening() {
+        listenJob?.cancel()
+        listenJob = null
+    }
+
+    /** Si la persona negó el permiso del micrófono, se le explica cómo darlo. */
+    fun onMicrophonePermissionDenied() {
+        val settings = currentSettings() ?: return
+        say(Phrases.listenProblemMessage(ListenProblem.PERMISSION_DENIED), settings.speechRate)
+    }
+
     fun openVoiceSetup(): Boolean = speaker.openVoiceSetup()
 
     override fun onCleared() {
+        listenJob?.cancel()
         speaker.stop()
     }
 

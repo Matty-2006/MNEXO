@@ -6,6 +6,10 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import ec.mnexo.data.settings.SETTINGS_FILE_NAME
 import ec.mnexo.data.settings.createSettingsRepository
+import ec.mnexo.listening.HttpModelStore
+import ec.mnexo.listening.OfflineListener
+import ec.mnexo.listening.SherpaDesktopListenEngine
+import ec.mnexo.listening.SpeechModels
 import ec.mnexo.voice.FallbackSpeaker
 import ec.mnexo.voice.SherpaDesktopSpeaker
 import ec.mnexo.voice.WindowsSpeaker
@@ -20,6 +24,11 @@ fun main() {
         system = WindowsSpeaker(),
         own = SherpaDesktopSpeaker(SherpaDesktopSpeaker.findVoiceDir()),
     )
+    // Oído de MNEXO: el modelo se descarga una vez a %APPDATA%\MNEXO\models.
+    val listener = OfflineListener(
+        store = HttpModelStore(File(dataDir, "models/${SpeechModels.NEMO_ES_DIR_NAME}"), SpeechModels.NEMO_ES_CTC),
+        engine = SherpaDesktopListenEngine(SherpaDesktopListenEngine.findVadFile()),
+    )
 
     application {
         Window(
@@ -31,7 +40,7 @@ fun main() {
             // Ventana amplia desde el inicio para que el texto grande se lea sin redimensionar.
             state = rememberWindowState(width = 900.dp, height = 760.dp),
         ) {
-            App(settingsRepository = settingsRepository, speaker = speaker)
+            App(settingsRepository = settingsRepository, speaker = speaker, listener = listener)
         }
     }
 }
